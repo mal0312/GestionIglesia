@@ -8,6 +8,7 @@ import type {
 } from "./domain/auth";
 import { authorizeGoogleAccount, can, roleLabels } from "./domain/auth";
 import { siteContent } from "./content/siteContent";
+import { browserGoogleAuthClient } from "./content/googleAuthClient";
 import { privatePanelAuthConfig } from "./content/privatePanelConfig";
 import "./styles.css";
 
@@ -18,12 +19,6 @@ type AppProps = {
 };
 
 type AuthStatus = "idle" | "loading";
-
-const notConfiguredGoogleAuthClient: GoogleAuthClient = {
-  async signIn() {
-    throw new Error("Google auth client is not configured");
-  }
-};
 
 const finalAuthorityActions: Array<{
   label: string;
@@ -38,7 +33,7 @@ const finalAuthorityActions: Array<{
 export function App({
   content = siteContent,
   authConfig = privatePanelAuthConfig,
-  googleAuthClient = notConfiguredGoogleAuthClient
+  googleAuthClient = browserGoogleAuthClient
 }: AppProps) {
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("idle");

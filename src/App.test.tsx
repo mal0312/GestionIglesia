@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AuthConfig, GoogleAuthClient } from "./domain/auth";
 import type { SiteContent } from "./domain/siteContent";
@@ -173,5 +173,22 @@ describe("private panel authentication and roles", () => {
       "La cuenta visitante@example.com no esta autorizada para entrar al panel privado."
     );
     expect(screen.queryByText(/Sesion activa:/)).not.toBeInTheDocument();
+  });
+
+  it("uses the development Google prompt when no auth client is injected", async () => {
+    vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "");
+    vi.stubEnv("VITE_DEV_GOOGLE_SIGN_IN_EMAIL", "");
+    vi.spyOn(window, "prompt").mockReturnValue("editora@example.com");
+
+    render(<App authConfig={authConfig} content={content} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("Rol: Editor")).toBeInTheDocument();
   });
 });
