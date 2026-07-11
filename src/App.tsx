@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { NewsPublication, SiteContent } from "./domain/siteContent";
+import type { NewsDraftVersion, NewsPublication, SiteContent } from "./domain/siteContent";
 import type {
   AuthConfig,
   AuthenticatedUser,
@@ -151,6 +151,48 @@ export function App({
     );
   }
 
+  function handleProposeRevision(newsId: string, input: NewsDraftVersion) {
+    setNews((currentNews) =>
+      currentNews.map((newsItem) =>
+        newsItem.id === newsId && newsItem.status === "published"
+          ? { ...newsItem, status: "pending_review", pendingVersion: input }
+          : newsItem
+      )
+    );
+  }
+
+  function handleApproveRevision(newsId: string) {
+    setNews((currentNews) =>
+      currentNews.map((newsItem) =>
+        newsItem.id === newsId &&
+        newsItem.status === "pending_review" &&
+        newsItem.pendingVersion
+          ? {
+              ...newsItem,
+              title: newsItem.pendingVersion.title,
+              summary: newsItem.pendingVersion.summary,
+              body: newsItem.pendingVersion.body,
+              imageReference: newsItem.pendingVersion.imageReference,
+              status: "published",
+              pendingVersion: undefined
+            }
+          : newsItem
+      )
+    );
+  }
+
+  function handleRejectRevision(newsId: string) {
+    setNews((currentNews) =>
+      currentNews.map((newsItem) =>
+        newsItem.id === newsId &&
+        newsItem.status === "pending_review" &&
+        newsItem.pendingVersion
+          ? { ...newsItem, status: "published", pendingVersion: undefined }
+          : newsItem
+      )
+    );
+  }
+
   return (
     <main className="site-shell">
       <section className="hero" aria-labelledby="home-title">
@@ -204,9 +246,12 @@ export function App({
         currentUser={currentUser}
         news={news}
         onApproveNews={handleApproveNews}
+        onApproveRevision={handleApproveRevision}
         onCreateDraftNews={handleCreateDraftNews}
         onGoogleSignIn={handleGoogleSignIn}
+        onProposeRevision={handleProposeRevision}
         onRejectNews={handleRejectNews}
+        onRejectRevision={handleRejectRevision}
         onSignOut={handleSignOut}
         onSubmitNewsForReview={handleSubmitNewsForReview}
         onUpdateDraftNews={handleUpdateDraftNews}
@@ -223,9 +268,12 @@ type PrivatePanelProps = {
   currentUser: AuthenticatedUser | null;
   news: NewsPublication[];
   onApproveNews: (newsId: string) => void;
+  onApproveRevision: (newsId: string) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onGoogleSignIn: () => void;
+  onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectNews: (newsId: string) => void;
+  onRejectRevision: (newsId: string) => void;
   onSignOut: () => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
@@ -237,9 +285,12 @@ function PrivatePanel({
   currentUser,
   news,
   onApproveNews,
+  onApproveRevision,
   onCreateDraftNews,
   onGoogleSignIn,
+  onProposeRevision,
   onRejectNews,
+  onRejectRevision,
   onSignOut,
   onSubmitNewsForReview,
   onUpdateDraftNews
@@ -283,8 +334,11 @@ function PrivatePanel({
         <RoleStartSurface
           news={news}
           onApproveNews={onApproveNews}
+          onApproveRevision={onApproveRevision}
           onCreateDraftNews={onCreateDraftNews}
+          onProposeRevision={onProposeRevision}
           onRejectNews={onRejectNews}
+          onRejectRevision={onRejectRevision}
           onSubmitNewsForReview={onSubmitNewsForReview}
           onUpdateDraftNews={onUpdateDraftNews}
           user={currentUser}
@@ -309,8 +363,11 @@ function AuthGuardrails() {
 type RoleStartSurfaceProps = {
   news: NewsPublication[];
   onApproveNews: (newsId: string) => void;
+  onApproveRevision: (newsId: string) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
+  onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectNews: (newsId: string) => void;
+  onRejectRevision: (newsId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
   user: AuthenticatedUser;
@@ -319,8 +376,11 @@ type RoleStartSurfaceProps = {
 function RoleStartSurface({
   news,
   onApproveNews,
+  onApproveRevision,
   onCreateDraftNews,
+  onProposeRevision,
   onRejectNews,
+  onRejectRevision,
   onSubmitNewsForReview,
   onUpdateDraftNews,
   user
@@ -376,8 +436,11 @@ function RoleStartSurface({
       <NewsEditorialWorkspace
         news={news}
         onApproveNews={onApproveNews}
+        onApproveRevision={onApproveRevision}
         onCreateDraftNews={onCreateDraftNews}
+        onProposeRevision={onProposeRevision}
         onRejectNews={onRejectNews}
+        onRejectRevision={onRejectRevision}
         onSubmitNewsForReview={onSubmitNewsForReview}
         onUpdateDraftNews={onUpdateDraftNews}
         user={user}
@@ -387,7 +450,11 @@ function RoleStartSurface({
 }
 
 function PublicNewsSection({ news }: { news: NewsPublication[] }) {
-  const publishedNews = news.filter((newsItem) => newsItem.status === "published");
+  const publishedNews = news.filter(
+    (newsItem) =>
+      newsItem.status === "published" ||
+      (newsItem.status === "pending_review" && newsItem.pendingVersion)
+  );
 
   return (
     <section className="public-news" aria-labelledby="public-news-title">
@@ -419,8 +486,11 @@ function PublicNewsSection({ news }: { news: NewsPublication[] }) {
 type NewsEditorialWorkspaceProps = {
   news: NewsPublication[];
   onApproveNews: (newsId: string) => void;
+  onApproveRevision: (newsId: string) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
+  onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectNews: (newsId: string) => void;
+  onRejectRevision: (newsId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
   user: AuthenticatedUser;
@@ -429,14 +499,18 @@ type NewsEditorialWorkspaceProps = {
 function NewsEditorialWorkspace({
   news,
   onApproveNews,
+  onApproveRevision,
   onCreateDraftNews,
+  onProposeRevision,
   onRejectNews,
+  onRejectRevision,
   onSubmitNewsForReview,
   onUpdateDraftNews,
   user
 }: NewsEditorialWorkspaceProps) {
   const [formValues, setFormValues] = useState<NewsFormValues>(emptyNewsFormValues);
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
+  const [editingPublishedNewsId, setEditingPublishedNewsId] = useState<string | null>(null);
 
   function handleFormChange(field: keyof NewsFormValues, value: string) {
     setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
@@ -444,6 +518,7 @@ function NewsEditorialWorkspace({
 
   function resetForm() {
     setEditingNewsId(null);
+    setEditingPublishedNewsId(null);
     setFormValues(emptyNewsFormValues);
   }
 
@@ -456,7 +531,9 @@ function NewsEditorialWorkspace({
       return;
     }
 
-    if (editingNewsId) {
+    if (editingPublishedNewsId) {
+      onProposeRevision(editingPublishedNewsId, input);
+    } else if (editingNewsId) {
       onUpdateDraftNews(editingNewsId, input);
     } else {
       onCreateDraftNews(input);
@@ -467,6 +544,16 @@ function NewsEditorialWorkspace({
 
   function handleEditDraft(newsItem: NewsPublication) {
     setEditingNewsId(newsItem.id);
+    setFormValues({
+      title: newsItem.title,
+      summary: newsItem.summary,
+      body: newsItem.body,
+      imageReference: newsItem.imageReference ?? ""
+    });
+  }
+
+  function handleEditPublished(newsItem: NewsPublication) {
+    setEditingPublishedNewsId(newsItem.id);
     setFormValues({
       title: newsItem.title,
       summary: newsItem.summary,
@@ -487,7 +574,13 @@ function NewsEditorialWorkspace({
     <div className="news-workspace">
       {user.role === "editor" ? (
         <form className="news-form" onSubmit={handleFormSubmit}>
-          <h4>{editingNewsId ? "Editar borrador Noticia" : "Nuevo Borrador Noticia"}</h4>
+          <h4>
+            {editingPublishedNewsId
+              ? "Proponer cambios a Noticia publicada"
+              : editingNewsId
+                ? "Editar borrador Noticia"
+                : "Nuevo Borrador Noticia"}
+          </h4>
           <label>
             Titulo de la noticia
             <input
@@ -526,9 +619,13 @@ function NewsEditorialWorkspace({
           </label>
           <div className="action-row">
             <button type="submit">
-              {editingNewsId ? "Guardar borrador" : "Crear borrador"}
+              {editingPublishedNewsId
+                ? "Proponer cambios"
+                : editingNewsId
+                  ? "Guardar borrador"
+                  : "Crear borrador"}
             </button>
-            {editingNewsId ? (
+            {(editingNewsId || editingPublishedNewsId) ? (
               <button onClick={resetForm} type="button">
                 Cancelar edicion
               </button>
@@ -548,8 +645,11 @@ function NewsEditorialWorkspace({
                 key={newsItem.id}
                 newsItem={newsItem}
                 onApproveNews={onApproveNews}
+                onApproveRevision={onApproveRevision}
                 onEditDraft={handleEditDraft}
+                onEditPublished={handleEditPublished}
                 onRejectNews={onRejectNews}
+                onRejectRevision={onRejectRevision}
                 onSubmitForReview={handleSubmitForReview}
                 user={user}
               />
@@ -566,8 +666,11 @@ function NewsEditorialWorkspace({
 type NewsPanelCardProps = {
   newsItem: NewsPublication;
   onApproveNews: (newsId: string) => void;
+  onApproveRevision: (newsId: string) => void;
   onEditDraft: (newsItem: NewsPublication) => void;
+  onEditPublished: (newsItem: NewsPublication) => void;
   onRejectNews: (newsId: string) => void;
+  onRejectRevision: (newsId: string) => void;
   onSubmitForReview: (newsId: string) => void;
   user: AuthenticatedUser;
 };
@@ -575,8 +678,11 @@ type NewsPanelCardProps = {
 function NewsPanelCard({
   newsItem,
   onApproveNews,
+  onApproveRevision,
   onEditDraft,
+  onEditPublished,
   onRejectNews,
+  onRejectRevision,
   onSubmitForReview,
   user
 }: NewsPanelCardProps) {
@@ -596,6 +702,20 @@ function NewsPanelCard({
         <p className="news-image-reference">Imagen: {newsItem.imageReference}</p>
       ) : null}
 
+      {newsItem.pendingVersion ? (
+        <div className="pending-version-preview">
+          <h6>Revision pendiente</h6>
+          <h6>{newsItem.pendingVersion.title}</h6>
+          <p className="news-summary">{newsItem.pendingVersion.summary}</p>
+          <p>{newsItem.pendingVersion.body}</p>
+          {newsItem.pendingVersion.imageReference ? (
+            <p className="news-image-reference">
+              Imagen: {newsItem.pendingVersion.imageReference}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {user.role === "editor" && newsItem.status === "draft" ? (
         <div className="action-row">
           <button onClick={() => onEditDraft(newsItem)} type="button">
@@ -607,13 +727,34 @@ function NewsPanelCard({
         </div>
       ) : null}
 
-      {user.role === "admin" && newsItem.status === "pending_review" ? (
+      {user.role === "editor" &&
+      newsItem.status === "published" &&
+      !newsItem.pendingVersion ? (
+        <div className="action-row">
+          <button onClick={() => onEditPublished(newsItem)} type="button">
+            Editar publicado
+          </button>
+        </div>
+      ) : null}
+
+      {user.role === "admin" && newsItem.status === "pending_review" && !newsItem.pendingVersion ? (
         <div className="action-row">
           <button onClick={() => onApproveNews(newsItem.id)} type="button">
             Aprobar noticia
           </button>
           <button onClick={() => onRejectNews(newsItem.id)} type="button">
             Rechazar noticia
+          </button>
+        </div>
+      ) : null}
+
+      {user.role === "admin" && newsItem.status === "pending_review" && newsItem.pendingVersion ? (
+        <div className="action-row">
+          <button onClick={() => onApproveRevision(newsItem.id)} type="button">
+            Aprobar revision
+          </button>
+          <button onClick={() => onRejectRevision(newsItem.id)} type="button">
+            Rechazar revision
           </button>
         </div>
       ) : null}

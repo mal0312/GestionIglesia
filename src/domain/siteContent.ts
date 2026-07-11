@@ -14,6 +14,13 @@ export type FutureSection = {
 
 export type NewsStatus = "draft" | "pending_review" | "published" | "rejected";
 
+export type NewsDraftVersion = {
+  title: string;
+  summary: string;
+  body: string;
+  imageReference?: string;
+};
+
 export type NewsPublication = {
   id: string;
   title: string;
@@ -21,6 +28,7 @@ export type NewsPublication = {
   body: string;
   imageReference?: string;
   status: NewsStatus;
+  pendingVersion?: NewsDraftVersion;
 };
 
 export type SiteContent = {

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AuthConfig, GoogleAuthClient } from "./domain/auth";
-import type { SiteContent } from "./domain/siteContent";
+import type { NewsPublication, SiteContent } from "./domain/siteContent";
 
 const content: SiteContent = {
   churchName: "Iglesia del Test",
@@ -204,6 +204,262 @@ describe("private panel authentication and roles", () => {
       await within(panel).findByText(/Sesion activa: editora@example.com/)
     ).toBeInTheDocument();
     expect(within(panel).getByText("Rol: Editor")).toBeInTheDocument();
+  });
+});
+
+describe("Noticia revision pendiente", () => {
+  const publishedNews: NewsPublication[] = [
+    {
+      id: "noticia-1",
+      title: "Culto de domingo",
+      summary: "Resumen original del culto.",
+      body: "Cuerpo original del culto de domingo.",
+      imageReference: "culto.jpg",
+      status: "published"
+    }
+  ];
+
+  const contentWithPublishedNews: SiteContent = {
+    ...content,
+    news: publishedNews
+  };
+
+  it("lets an Editor propose changes to a Published Noticia creating a Revision pendiente", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={contentWithPublishedNews}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    const publishedCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(publishedCard).getByRole("button", { name: "Editar publicado" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto de domingo actualizado" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Resumen actualizado del culto." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Cuerpo actualizado del culto de domingo." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Proponer cambios" }));
+
+    expect(within(panel).getByText("Pendiente de revision")).toBeInTheDocument();
+    expect(within(panel).getByText("Culto de domingo actualizado")).toBeInTheDocument();
+  });
+
+  it("keeps the public site showing the previous Version publicada while Revision pendiente is waiting", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={contentWithPublishedNews}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    expect(within(publicNews).getByText("Culto de domingo")).toBeInTheDocument();
+    expect(within(publicNews).queryByText("Resumen actualizado del culto.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    const publishedCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(publishedCard).getByRole("button", { name: "Editar publicado" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto de domingo actualizado" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Resumen actualizado del culto." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Cuerpo actualizado del culto de domingo." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Proponer cambios" }));
+
+    expect(within(publicNews).getByText("Culto de domingo")).toBeInTheDocument();
+    expect(within(publicNews).queryByText("Culto de domingo actualizado")).not.toBeInTheDocument();
+    expect(within(publicNews).queryByText("Resumen actualizado del culto.")).not.toBeInTheDocument();
+  });
+
+  it("prevents multiple concurrent Revision pendiente entries for the same Noticia", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={contentWithPublishedNews}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    const publishedCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(publishedCard).getByRole("button", { name: "Editar publicado" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto de domingo actualizado" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Resumen actualizado del culto." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Cuerpo actualizado del culto de domingo." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Proponer cambios" }));
+
+    expect(within(panel).getByText("Pendiente de revision")).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("button", { name: "Editar publicado" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets an Administrador approve a Revision pendiente so it becomes the new Version publicada", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={contentWithPublishedNews}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    const publishedCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(publishedCard).getByRole("button", { name: "Editar publicado" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto de domingo actualizado" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Resumen actualizado del culto." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Cuerpo actualizado del culto de domingo." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Proponer cambios" }));
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const revisionCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(revisionCard).getByRole("button", { name: "Aprobar revision" }));
+
+    expect(within(panel).getByText("Publicado")).toBeInTheDocument();
+    expect(within(panel).queryByText("Pendiente de revision")).not.toBeInTheDocument();
+    expect(within(publicNews).getByText("Culto de domingo actualizado")).toBeInTheDocument();
+    expect(within(publicNews).queryByText("Culto de domingo")).not.toBeInTheDocument();
+  });
+
+  it("lets an Administrador reject a Revision pendiente so the previous Version publicada remains unchanged", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={contentWithPublishedNews}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    const publishedCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(publishedCard).getByRole("button", { name: "Editar publicado" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto de domingo actualizado" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Resumen actualizado del culto." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Cuerpo actualizado del culto de domingo." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Proponer cambios" }));
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const revisionCard = within(panel).getByRole("article", {
+      name: "Culto de domingo"
+    });
+
+    fireEvent.click(within(revisionCard).getByRole("button", { name: "Rechazar revision" }));
+
+    expect(within(panel).getByText("Publicado")).toBeInTheDocument();
+    expect(within(panel).queryByText("Pendiente de revision")).not.toBeInTheDocument();
+    expect(within(publicNews).getByText("Culto de domingo")).toBeInTheDocument();
+    expect(within(publicNews).queryByText("Culto de domingo actualizado")).not.toBeInTheDocument();
   });
 });
 
