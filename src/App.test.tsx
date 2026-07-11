@@ -24,6 +24,7 @@ const content: SiteContent = {
     { title: "Noticias", description: "Comunicaciones aprobadas." },
     { title: "Predicaciones", description: "Mensajes con YouTube." }
   ],
+  news: [],
   costNote: "Hosting gratuito y sin dominio propio requerido."
 };
 
@@ -37,6 +38,19 @@ const authConfig: AuthConfig = {
 function googleAuthClientReturning(email: string): GoogleAuthClient {
   return {
     async signIn() {
+      return { email };
+    }
+  };
+}
+
+function googleAuthClientReturningSequence(emails: string[]): GoogleAuthClient {
+  let nextEmail = 0;
+
+  return {
+    async signIn() {
+      const email = emails[Math.min(nextEmail, emails.length - 1)];
+      nextEmail += 1;
+
       return { email };
     }
   };
@@ -190,5 +204,140 @@ describe("private panel authentication and roles", () => {
       await within(panel).findByText(/Sesion activa: editora@example.com/)
     ).toBeInTheDocument();
     expect(within(panel).getByText("Rol: Editor")).toBeInTheDocument();
+  });
+});
+
+describe("Noticia editorial flow", () => {
+  it("lets an Editor create, edit and submit a Noticia draft for review", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence(["editora@example.com"])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Encuentro de familias" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Una jornada para compartir en comunidad." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "La iglesia invita a todas las familias este sabado." }
+    });
+    fireEvent.change(
+      within(panel).getByLabelText("Referencia de imagen (opcional)"),
+      {
+        target: { value: "familias.jpg" }
+      }
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+
+    expect(within(panel).getByText("Borrador")).toBeInTheDocument();
+    expect(within(panel).getByText("Encuentro de familias")).toBeInTheDocument();
+    expect(within(publicNews).queryByText("Encuentro de familias")).not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Editar borrador" }));
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Encuentro de familias actualizado" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar borrador" }));
+
+    expect(
+      within(panel).getByText("Encuentro de familias actualizado")
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar a revision" }));
+
+    expect(within(panel).getByText("Pendiente de revision")).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("button", { name: "Aprobar noticia" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("button", { name: "Rechazar noticia" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(publicNews).queryByText("Encuentro de familias actualizado")
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets an Administrador approve or reject pending Noticias and controls public visibility", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto especial" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Invitacion abierta para el domingo." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "El Administrador aprobara esta Noticia." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar a revision" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Aviso interno" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Este aviso no debe quedar publicado." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "El Administrador rechazara esta Noticia." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar a revision" }));
+
+    expect(within(publicNews).queryByText("Culto especial")).not.toBeInTheDocument();
+    expect(within(publicNews).queryByText("Aviso interno")).not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", {
+      name: "Culto especial"
+    });
+    fireEvent.click(within(approvedCard).getByRole("button", { name: "Aprobar noticia" }));
+
+    const rejectedCard = within(panel).getByRole("article", { name: "Aviso interno" });
+    fireEvent.click(within(rejectedCard).getByRole("button", { name: "Rechazar noticia" }));
+
+    expect(within(panel).getByText("Publicado")).toBeInTheDocument();
+    expect(within(panel).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(publicNews).getByText("Culto especial")).toBeInTheDocument();
+    expect(within(publicNews).queryByText("Aviso interno")).not.toBeInTheDocument();
   });
 });

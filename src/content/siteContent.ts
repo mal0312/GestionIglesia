@@ -37,6 +37,7 @@ export const siteContent: SiteContent = {
       description: "Mensajes publicados con videos de YouTube."
     }
   ],
+  news: [],
   costNote:
     "El MVP esta preparado para comenzar con hosting gratuito y sin dominio propio requerido."
 };
