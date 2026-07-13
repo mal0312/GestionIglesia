@@ -1505,7 +1505,7 @@ function SermonPanelCard({
       {user.role === "editor" && sermon.status === "draft" ? (
         <div className="action-row">
           <button onClick={() => onSubmitForReview(sermon.id)} type="button">
-            Enviar predicacion a revision
+            Enviar al administrador para aprobar
           </button>
         </div>
       ) : null}

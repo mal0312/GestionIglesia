@@ -810,7 +810,7 @@ describe("Predicacion editorial flow", () => {
 
     fireEvent.click(
       within(sermonCard).getByRole("button", {
-        name: "Enviar predicacion a revision"
+        name: "Enviar al administrador para aprobar"
       })
     );
 
@@ -868,7 +868,7 @@ describe("Predicacion editorial flow", () => {
     const approvedDraft = within(panel).getByRole("article", { name: "Gracia para hoy" });
     fireEvent.click(
       within(approvedDraft).getByRole("button", {
-        name: "Enviar predicacion a revision"
+        name: "Enviar al administrador para aprobar"
       })
     );
 
@@ -895,7 +895,7 @@ describe("Predicacion editorial flow", () => {
     });
     fireEvent.click(
       within(rejectedDraft).getByRole("button", {
-        name: "Enviar predicacion a revision"
+        name: "Enviar al administrador para aprobar"
       })
     );
 
