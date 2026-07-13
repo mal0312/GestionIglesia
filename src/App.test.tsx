@@ -2,7 +2,12 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AuthConfig, GoogleAuthClient } from "./domain/auth";
-import type { EventPublication, NewsPublication, SiteContent } from "./domain/siteContent";
+import type {
+  CampaignPublication,
+  EventPublication,
+  NewsPublication,
+  SiteContent
+} from "./domain/siteContent";
 
 const content: SiteContent = {
   churchName: "Iglesia del Test",
@@ -18,6 +23,7 @@ const content: SiteContent = {
     noReceiptStorageNotice:
       "El sitio no registra ni guarda comprobantes de pago en el MVP."
   },
+  campaigns: [],
   events: [],
   futureSections: [
     { title: "Eventos", description: "Actividades proximas." },
@@ -434,6 +440,242 @@ describe("Evento editorial flow", () => {
     expect(within(rejectedCard).getByText("Rechazado")).toBeInTheDocument();
     expect(within(publicEvents).getByText("Conferencia evangelistica")).toBeInTheDocument();
     expect(within(publicEvents).queryByText("Evento interno")).not.toBeInTheDocument();
+  });
+});
+
+describe("Campana editorial flow", () => {
+  const campaigns: CampaignPublication[] = [
+    {
+      id: "campana-1",
+      title: "Canasta solidaria",
+      description: "Reunimos alimentos para familias del barrio.",
+      imageReference: "canasta.jpg",
+      videoUrl: "https://youtube.com/watch?v=campana",
+      callToActionText: "Acercate a colaborar con alimentos no perecederos.",
+      status: "published"
+    },
+    {
+      id: "campana-2",
+      title: "Borrador de campana",
+      description: "Todavia no fue enviada.",
+      imageReference: "borrador.jpg",
+      callToActionText: "No visible.",
+      status: "draft"
+    },
+    {
+      id: "campana-3",
+      title: "Campana pendiente",
+      description: "Espera aprobacion.",
+      imageReference: "pendiente.jpg",
+      callToActionText: "No visible.",
+      status: "pending_review"
+    },
+    {
+      id: "campana-4",
+      title: "Campana rechazada",
+      description: "No debe publicarse.",
+      imageReference: "rechazada.jpg",
+      callToActionText: "No visible.",
+      status: "rejected"
+    }
+  ];
+
+  it("shows only published Campanas publicly with visual reference and call to action", () => {
+    render(<App content={{ ...content, campaigns }} />);
+
+    const publicCampaigns = screen.getByRole("region", {
+      name: "Campanas publicadas"
+    });
+    const campaignCard = within(publicCampaigns).getByRole("article", {
+      name: "Canasta solidaria"
+    });
+
+    expect(
+      within(campaignCard).getByText("Reunimos alimentos para familias del barrio.")
+    ).toBeInTheDocument();
+    expect(within(campaignCard).getByText("Imagen: canasta.jpg")).toBeInTheDocument();
+    expect(
+      within(campaignCard).getByText("Video: https://youtube.com/watch?v=campana")
+    ).toBeInTheDocument();
+    expect(
+      within(campaignCard).getByText("Acercate a colaborar con alimentos no perecederos.")
+    ).toBeInTheDocument();
+    expect(
+      within(campaignCard).getByText(
+        /no procesa pagos, registra comprobantes ni vincula aportes automaticamente/i
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(campaignCard).queryByRole("button", { name: /pagar|comprobante/i })
+    ).not.toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Borrador de campana"))
+      .not.toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Campana pendiente"))
+      .not.toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Campana rechazada"))
+      .not.toBeInTheDocument();
+  });
+
+  it("lets an Editor create and submit a Campana draft for review", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+      />
+    );
+
+    const publicCampaigns = screen.getByRole("region", {
+      name: "Campanas publicadas"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la campana"), {
+      target: { value: "Abrigo de invierno" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion de la campana"), {
+      target: { value: "Recolectamos abrigos para entregar antes del frio." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Referencia de flyer o imagen"), {
+      target: { value: "abrigo.jpg" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL de video (opcional)"), {
+      target: { value: "https://youtube.com/watch?v=abrigo" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Texto de llamada a la accion"), {
+      target: { value: "Trae un abrigo limpio al templo esta semana." }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de campana" })
+    );
+
+    const campaignCard = within(panel).getByRole("article", {
+      name: "Abrigo de invierno"
+    });
+    expect(within(campaignCard).getByText("Borrador")).toBeInTheDocument();
+    expect(within(campaignCard).getByText("Imagen: abrigo.jpg")).toBeInTheDocument();
+    expect(
+      within(campaignCard).getByText("Video: https://youtube.com/watch?v=abrigo")
+    ).toBeInTheDocument();
+    expect(
+      within(campaignCard).getByText("Trae un abrigo limpio al templo esta semana.")
+    ).toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Abrigo de invierno"))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(campaignCard).getByRole("button", { name: "Enviar campana a revision" })
+    );
+
+    expect(within(campaignCard).getByText("Pendiente de revision")).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Aprobar campana" }))
+      .not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Rechazar campana" }))
+      .not.toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Abrigo de invierno"))
+      .not.toBeInTheDocument();
+  });
+
+  it("lets an Administrador approve or reject pending Campanas and controls public visibility", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicCampaigns = screen.getByRole("region", {
+      name: "Campanas publicadas"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la campana"), {
+      target: { value: "Biblias para jovenes" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion de la campana"), {
+      target: { value: "Queremos entregar Biblias de estudio al grupo de jovenes." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Referencia de flyer o imagen"), {
+      target: { value: "biblias.jpg" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Texto de llamada a la accion"), {
+      target: { value: "Habla con el equipo pastoral para colaborar." }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de campana" })
+    );
+    const approvedDraft = within(panel).getByRole("article", {
+      name: "Biblias para jovenes"
+    });
+    fireEvent.click(
+      within(approvedDraft).getByRole("button", { name: "Enviar campana a revision" })
+    );
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la campana"), {
+      target: { value: "Campana interna" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion de la campana"), {
+      target: { value: "No debe quedar publica." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Referencia de flyer o imagen"), {
+      target: { value: "interna.jpg" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Texto de llamada a la accion"), {
+      target: { value: "No publicar." }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de campana" })
+    );
+    const rejectedDraft = within(panel).getByRole("article", {
+      name: "Campana interna"
+    });
+    fireEvent.click(
+      within(rejectedDraft).getByRole("button", { name: "Enviar campana a revision" })
+    );
+
+    expect(within(publicCampaigns).queryByText("Biblias para jovenes"))
+      .not.toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Campana interna"))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", {
+      name: "Biblias para jovenes"
+    });
+    fireEvent.click(within(approvedCard).getByRole("button", { name: "Aprobar campana" }));
+
+    const rejectedCard = within(panel).getByRole("article", { name: "Campana interna" });
+    fireEvent.click(within(rejectedCard).getByRole("button", { name: "Rechazar campana" }));
+
+    expect(within(approvedCard).getByText("Publicado")).toBeInTheDocument();
+    expect(within(rejectedCard).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(publicCampaigns).getByText("Biblias para jovenes")).toBeInTheDocument();
+    expect(within(publicCampaigns).queryByText("Campana interna"))
+      .not.toBeInTheDocument();
   });
 });
 

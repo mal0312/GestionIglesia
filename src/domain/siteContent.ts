@@ -18,6 +18,8 @@ export type NewsStatus = PublicationStatus;
 
 export type EventStatus = PublicationStatus;
 
+export type CampaignStatus = PublicationStatus;
+
 export type EventPublication = {
   id: string;
   title: string;
@@ -27,6 +29,16 @@ export type EventPublication = {
   organizer: string;
   flyerReference?: string;
   status: EventStatus;
+};
+
+export type CampaignPublication = {
+  id: string;
+  title: string;
+  description: string;
+  imageReference: string;
+  videoUrl?: string;
+  callToActionText: string;
+  status: CampaignStatus;
 };
 
 export type NewsDraftVersion = {
@@ -51,6 +63,7 @@ export type SiteContent = {
   welcomeTitle: string;
   welcomeText: string;
   donation: DonationInfo;
+  campaigns: CampaignPublication[];
   events: EventPublication[];
   futureSections: FutureSection[];
   news: NewsPublication[];

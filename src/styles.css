@@ -26,6 +26,7 @@ body {
 
 .hero,
 .future-sections,
+.public-campaigns,
 .public-events,
 .public-news,
 .donation,
@@ -96,6 +97,7 @@ h1 {
   padding: clamp(24px, 5vw, 44px);
 }
 
+.public-campaigns,
 .public-events {
   display: grid;
   gap: 24px;
@@ -104,6 +106,7 @@ h1 {
 }
 
 .future-sections h2,
+.public-campaigns h2,
 .public-events h2,
 .public-news h2,
 .donation h2,
@@ -133,6 +136,7 @@ h1 {
 }
 
 .section-card p,
+.public-campaigns p,
 .public-events p,
 .public-news p,
 .donation p,
@@ -319,9 +323,21 @@ h1 {
 }
 
 .news-image-reference,
+.campaign-call-to-action,
+.campaign-guardrail,
 .empty-news-note {
   margin-bottom: 0;
   font-size: 0.94rem;
+}
+
+.campaign-call-to-action {
+  color: #7c2d12;
+  font-weight: 900;
+}
+
+.campaign-guardrail {
+  padding-top: 10px;
+  border-top: 1px solid rgba(120, 53, 15, 0.16);
 }
 
 .news-card-header {

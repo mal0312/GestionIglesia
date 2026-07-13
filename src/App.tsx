@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import type {
+  CampaignPublication,
   EventPublication,
   NewsDraftVersion,
   NewsPublication,
@@ -41,6 +42,22 @@ type NewsFormValues = {
   imageReference: string;
 };
 
+type CampaignDraftInput = {
+  title: string;
+  description: string;
+  imageReference: string;
+  videoUrl?: string;
+  callToActionText: string;
+};
+
+type CampaignFormValues = {
+  title: string;
+  description: string;
+  imageReference: string;
+  videoUrl: string;
+  callToActionText: string;
+};
+
 type EventDraftInput = {
   title: string;
   description: string;
@@ -64,6 +81,14 @@ const emptyNewsFormValues: NewsFormValues = {
   summary: "",
   body: "",
   imageReference: ""
+};
+
+const emptyCampaignFormValues: CampaignFormValues = {
+  title: "",
+  description: "",
+  imageReference: "",
+  videoUrl: "",
+  callToActionText: ""
 };
 
 const emptyEventFormValues: EventFormValues = {
@@ -102,6 +127,9 @@ export function App({
   const [authStatus, setAuthStatus] = useState<AuthStatus>("idle");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [news, setNews] = useState<NewsPublication[]>(() => content.news);
+  const [campaigns, setCampaigns] = useState<CampaignPublication[]>(
+    () => content.campaigns
+  );
   const [events, setEvents] = useState<EventPublication[]>(() => content.events);
 
   async function handleGoogleSignIn() {
@@ -229,6 +257,47 @@ export function App({
     );
   }
 
+  function handleCreateDraftCampaign(input: CampaignDraftInput) {
+    setCampaigns((currentCampaigns) => [
+      ...currentCampaigns,
+      {
+        ...input,
+        id: createCampaignId(currentCampaigns),
+        status: "draft"
+      }
+    ]);
+  }
+
+  function handleSubmitCampaignForReview(campaignId: string) {
+    setCampaigns((currentCampaigns) =>
+      currentCampaigns.map((campaign) =>
+        campaign.id === campaignId && campaign.status === "draft"
+          ? { ...campaign, status: "pending_review" }
+          : campaign
+      )
+    );
+  }
+
+  function handleApproveCampaign(campaignId: string) {
+    setCampaigns((currentCampaigns) =>
+      currentCampaigns.map((campaign) =>
+        campaign.id === campaignId && campaign.status === "pending_review"
+          ? { ...campaign, status: "published" }
+          : campaign
+      )
+    );
+  }
+
+  function handleRejectCampaign(campaignId: string) {
+    setCampaigns((currentCampaigns) =>
+      currentCampaigns.map((campaign) =>
+        campaign.id === campaignId && campaign.status === "pending_review"
+          ? { ...campaign, status: "rejected" }
+          : campaign
+      )
+    );
+  }
+
   function handleCreateDraftEvent(input: EventDraftInput) {
     setEvents((currentEvents) => [
       ...currentEvents,
@@ -296,6 +365,8 @@ export function App({
 
       <PublicEventsSection events={events} now={now} />
 
+      <PublicCampaignsSection campaigns={campaigns} />
+
       <PublicNewsSection news={news} />
 
       <section className="donation" aria-labelledby="donation-title">
@@ -322,20 +393,25 @@ export function App({
       <PrivatePanel
         authMessage={authMessage}
         authStatus={authStatus}
+        campaigns={campaigns}
         currentUser={currentUser}
         events={events}
         news={news}
+        onApproveCampaign={handleApproveCampaign}
         onApproveEvent={handleApproveEvent}
         onApproveNews={handleApproveNews}
         onApproveRevision={handleApproveRevision}
+        onCreateDraftCampaign={handleCreateDraftCampaign}
         onCreateDraftEvent={handleCreateDraftEvent}
         onCreateDraftNews={handleCreateDraftNews}
         onGoogleSignIn={handleGoogleSignIn}
         onProposeRevision={handleProposeRevision}
+        onRejectCampaign={handleRejectCampaign}
         onRejectEvent={handleRejectEvent}
         onRejectNews={handleRejectNews}
         onRejectRevision={handleRejectRevision}
         onSignOut={handleSignOut}
+        onSubmitCampaignForReview={handleSubmitCampaignForReview}
         onSubmitEventForReview={handleSubmitEventForReview}
         onSubmitNewsForReview={handleSubmitNewsForReview}
         onUpdateDraftNews={handleUpdateDraftNews}
@@ -349,20 +425,25 @@ export function App({
 type PrivatePanelProps = {
   authMessage: string | null;
   authStatus: AuthStatus;
+  campaigns: CampaignPublication[];
   currentUser: AuthenticatedUser | null;
   events: EventPublication[];
   news: NewsPublication[];
+  onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
+  onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onGoogleSignIn: () => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
+  onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
   onSignOut: () => void;
+  onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
@@ -371,20 +452,25 @@ type PrivatePanelProps = {
 function PrivatePanel({
   authMessage,
   authStatus,
+  campaigns,
   currentUser,
   events,
   news,
+  onApproveCampaign,
   onApproveEvent,
   onApproveNews,
   onApproveRevision,
+  onCreateDraftCampaign,
   onCreateDraftEvent,
   onCreateDraftNews,
   onGoogleSignIn,
   onProposeRevision,
+  onRejectCampaign,
   onRejectEvent,
   onRejectNews,
   onRejectRevision,
   onSignOut,
+  onSubmitCampaignForReview,
   onSubmitEventForReview,
   onSubmitNewsForReview,
   onUpdateDraftNews
@@ -426,17 +512,22 @@ function PrivatePanel({
 
       {currentUser ? (
         <RoleStartSurface
+          campaigns={campaigns}
           events={events}
           news={news}
+          onApproveCampaign={onApproveCampaign}
           onApproveEvent={onApproveEvent}
           onApproveNews={onApproveNews}
           onApproveRevision={onApproveRevision}
+          onCreateDraftCampaign={onCreateDraftCampaign}
           onCreateDraftEvent={onCreateDraftEvent}
           onCreateDraftNews={onCreateDraftNews}
           onProposeRevision={onProposeRevision}
+          onRejectCampaign={onRejectCampaign}
           onRejectEvent={onRejectEvent}
           onRejectNews={onRejectNews}
           onRejectRevision={onRejectRevision}
+          onSubmitCampaignForReview={onSubmitCampaignForReview}
           onSubmitEventForReview={onSubmitEventForReview}
           onSubmitNewsForReview={onSubmitNewsForReview}
           onUpdateDraftNews={onUpdateDraftNews}
@@ -460,17 +551,22 @@ function AuthGuardrails() {
 }
 
 type RoleStartSurfaceProps = {
+  campaigns: CampaignPublication[];
   events: EventPublication[];
   news: NewsPublication[];
+  onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
+  onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
+  onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
+  onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
@@ -478,17 +574,22 @@ type RoleStartSurfaceProps = {
 };
 
 function RoleStartSurface({
+  campaigns,
   events,
   news,
+  onApproveCampaign,
   onApproveEvent,
   onApproveNews,
   onApproveRevision,
+  onCreateDraftCampaign,
   onCreateDraftEvent,
   onCreateDraftNews,
   onProposeRevision,
+  onRejectCampaign,
   onRejectEvent,
   onRejectNews,
   onRejectRevision,
+  onSubmitCampaignForReview,
   onSubmitEventForReview,
   onSubmitNewsForReview,
   onUpdateDraftNews,
@@ -520,6 +621,7 @@ function RoleStartSurface({
           <div className="action-row">
             <button type="button">Usar formulario de Noticia</button>
             <button type="button">Usar formulario de Evento</button>
+            <button type="button">Usar formulario de Campana</button>
             <button type="button">Editar pendientes</button>
             <button type="button">Gestionar embeds sociales</button>
           </div>
@@ -549,6 +651,15 @@ function RoleStartSurface({
         onCreateDraftEvent={onCreateDraftEvent}
         onRejectEvent={onRejectEvent}
         onSubmitEventForReview={onSubmitEventForReview}
+        user={user}
+      />
+
+      <CampaignEditorialWorkspace
+        campaigns={campaigns}
+        onApproveCampaign={onApproveCampaign}
+        onCreateDraftCampaign={onCreateDraftCampaign}
+        onRejectCampaign={onRejectCampaign}
+        onSubmitCampaignForReview={onSubmitCampaignForReview}
         user={user}
       />
 
@@ -628,6 +739,47 @@ function PublicEventCard({ eventItem }: { eventItem: EventPublication }) {
   );
 }
 
+function PublicCampaignsSection({ campaigns }: { campaigns: CampaignPublication[] }) {
+  const publishedCampaigns = campaigns.filter(
+    (campaign) => campaign.status === "published"
+  );
+
+  return (
+    <section className="public-campaigns" aria-labelledby="public-campaigns-title">
+      <div>
+        <p className="eyebrow">Iniciativas</p>
+        <h2 id="public-campaigns-title">Campanas publicadas</h2>
+      </div>
+
+      {publishedCampaigns.length > 0 ? (
+        <div className="news-grid">
+          {publishedCampaigns.map((campaign) => (
+            <article
+              className="public-news-card"
+              aria-labelledby={`${campaign.id}-public-title`}
+              key={campaign.id}
+            >
+              <h3 id={`${campaign.id}-public-title`}>{campaign.title}</h3>
+              <p className="news-summary">{campaign.description}</p>
+              <p className="news-image-reference">Imagen: {campaign.imageReference}</p>
+              {campaign.videoUrl ? (
+                <p className="news-image-reference">Video: {campaign.videoUrl}</p>
+              ) : null}
+              <p className="campaign-call-to-action">{campaign.callToActionText}</p>
+              <p className="campaign-guardrail">
+                La web informa formas de colaborar; no procesa pagos, registra
+                comprobantes ni vincula aportes automaticamente con Donacion economica.
+              </p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-news-note">Todavia no hay campanas publicadas.</p>
+      )}
+    </section>
+  );
+}
+
 function PublicNewsSection({ news }: { news: NewsPublication[] }) {
   const publishedNews = news.filter(
     (newsItem) =>
@@ -681,6 +833,15 @@ type EventEditorialWorkspaceProps = {
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onRejectEvent: (eventId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
+  user: AuthenticatedUser;
+};
+
+type CampaignEditorialWorkspaceProps = {
+  campaigns: CampaignPublication[];
+  onApproveCampaign: (campaignId: string) => void;
+  onCreateDraftCampaign: (input: CampaignDraftInput) => void;
+  onRejectCampaign: (campaignId: string) => void;
+  onSubmitCampaignForReview: (campaignId: string) => void;
   user: AuthenticatedUser;
 };
 
@@ -847,6 +1008,169 @@ function EventPanelCard({
           </button>
           <button onClick={() => onRejectEvent(eventItem.id)} type="button">
             Rechazar evento
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function CampaignEditorialWorkspace({
+  campaigns,
+  onApproveCampaign,
+  onCreateDraftCampaign,
+  onRejectCampaign,
+  onSubmitCampaignForReview,
+  user
+}: CampaignEditorialWorkspaceProps) {
+  const [formValues, setFormValues] = useState<CampaignFormValues>(
+    emptyCampaignFormValues
+  );
+
+  function handleFormChange(field: keyof CampaignFormValues, value: string) {
+    setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const input = normalizeCampaignFormValues(formValues);
+
+    if (!isCompleteCampaignDraft(input)) {
+      return;
+    }
+
+    onCreateDraftCampaign(input);
+    setFormValues(emptyCampaignFormValues);
+  }
+
+  return (
+    <div className="news-workspace">
+      {user.role === "editor" ? (
+        <form className="news-form" onSubmit={handleFormSubmit}>
+          <h4>Nuevo Borrador Campana</h4>
+          <label>
+            Titulo de la campana
+            <input
+              onChange={(event) => handleFormChange("title", event.target.value)}
+              required
+              type="text"
+              value={formValues.title}
+            />
+          </label>
+          <label>
+            Descripcion de la campana
+            <textarea
+              onChange={(event) => handleFormChange("description", event.target.value)}
+              required
+              value={formValues.description}
+            />
+          </label>
+          <label>
+            Referencia de flyer o imagen
+            <input
+              onChange={(event) => handleFormChange("imageReference", event.target.value)}
+              required
+              type="text"
+              value={formValues.imageReference}
+            />
+          </label>
+          <label>
+            URL de video (opcional)
+            <input
+              onChange={(event) => handleFormChange("videoUrl", event.target.value)}
+              type="url"
+              value={formValues.videoUrl}
+            />
+          </label>
+          <label>
+            Texto de llamada a la accion
+            <textarea
+              onChange={(event) =>
+                handleFormChange("callToActionText", event.target.value)
+              }
+              required
+              value={formValues.callToActionText}
+            />
+          </label>
+          <div className="action-row">
+            <button type="submit">Crear borrador de campana</button>
+          </div>
+        </form>
+      ) : null}
+
+      <section className="news-review-panel" aria-labelledby="campaign-review-title">
+        <h4 id="campaign-review-title">
+          {user.role === "admin" ? "Revision de Campanas" : "Campanas en preparacion"}
+        </h4>
+        {campaigns.length > 0 ? (
+          <div className="news-list">
+            {campaigns.map((campaign) => (
+              <CampaignPanelCard
+                campaign={campaign}
+                key={campaign.id}
+                onApproveCampaign={onApproveCampaign}
+                onRejectCampaign={onRejectCampaign}
+                onSubmitForReview={onSubmitCampaignForReview}
+                user={user}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-news-note">Aun no hay Campanas en el panel.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+type CampaignPanelCardProps = {
+  campaign: CampaignPublication;
+  onApproveCampaign: (campaignId: string) => void;
+  onRejectCampaign: (campaignId: string) => void;
+  onSubmitForReview: (campaignId: string) => void;
+  user: AuthenticatedUser;
+};
+
+function CampaignPanelCard({
+  campaign,
+  onApproveCampaign,
+  onRejectCampaign,
+  onSubmitForReview,
+  user
+}: CampaignPanelCardProps) {
+  const titleId = `${campaign.id}-panel-title`;
+
+  return (
+    <article className="news-panel-card" aria-labelledby={titleId}>
+      <div className="news-card-header">
+        <span className={`status-badge status-${campaign.status}`}>
+          {publicationStatusLabels[campaign.status]}
+        </span>
+        <h5 id={titleId}>{campaign.title}</h5>
+      </div>
+      <p className="news-summary">{campaign.description}</p>
+      <p className="news-image-reference">Imagen: {campaign.imageReference}</p>
+      {campaign.videoUrl ? (
+        <p className="news-image-reference">Video: {campaign.videoUrl}</p>
+      ) : null}
+      <p className="campaign-call-to-action">{campaign.callToActionText}</p>
+
+      {user.role === "editor" && campaign.status === "draft" ? (
+        <div className="action-row">
+          <button onClick={() => onSubmitForReview(campaign.id)} type="button">
+            Enviar campana a revision
+          </button>
+        </div>
+      ) : null}
+
+      {user.role === "admin" && campaign.status === "pending_review" ? (
+        <div className="action-row">
+          <button onClick={() => onApproveCampaign(campaign.id)} type="button">
+            Aprobar campana
+          </button>
+          <button onClick={() => onRejectCampaign(campaign.id)} type="button">
+            Rechazar campana
           </button>
         </div>
       ) : null}
@@ -1124,8 +1448,33 @@ function createNewsId(currentNews: NewsPublication[]) {
   return `noticia-${currentNews.length + 1}`;
 }
 
+function createCampaignId(currentCampaigns: CampaignPublication[]) {
+  return `campana-${currentCampaigns.length + 1}`;
+}
+
 function createEventId(currentEvents: EventPublication[]) {
   return `evento-${currentEvents.length + 1}`;
+}
+
+function normalizeCampaignFormValues(values: CampaignFormValues): CampaignDraftInput {
+  const videoUrl = values.videoUrl.trim();
+
+  return {
+    title: values.title.trim(),
+    description: values.description.trim(),
+    imageReference: values.imageReference.trim(),
+    videoUrl: videoUrl || undefined,
+    callToActionText: values.callToActionText.trim()
+  };
+}
+
+function isCompleteCampaignDraft(input: CampaignDraftInput) {
+  return (
+    input.title.length > 0 &&
+    input.description.length > 0 &&
+    input.imageReference.length > 0 &&
+    input.callToActionText.length > 0
+  );
 }
 
 function normalizeEventFormValues(values: EventFormValues): EventDraftInput {
