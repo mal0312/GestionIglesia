@@ -29,6 +29,7 @@ body {
 .public-campaigns,
 .public-events,
 .public-news,
+.public-social-embeds,
 .public-sermons,
 .donation,
 .private-panel,
@@ -100,6 +101,7 @@ h1 {
 
 .public-campaigns,
 .public-events,
+.public-social-embeds,
 .public-sermons {
   display: grid;
   gap: 24px;
@@ -111,6 +113,7 @@ h1 {
 .public-campaigns h2,
 .public-events h2,
 .public-news h2,
+.public-social-embeds h2,
 .public-sermons h2,
 .donation h2,
 .private-panel h2 {
@@ -142,6 +145,7 @@ h1 {
 .public-campaigns p,
 .public-events p,
 .public-news p,
+.public-social-embeds p,
 .public-sermons p,
 .donation p,
 .guardrails,
@@ -299,6 +303,7 @@ h1 {
 }
 
 .news-form input,
+.news-form select,
 .news-form textarea {
   width: 100%;
   border: 1px solid rgba(120, 53, 15, 0.22);
@@ -342,6 +347,14 @@ h1 {
 .campaign-guardrail {
   padding-top: 10px;
   border-top: 1px solid rgba(120, 53, 15, 0.16);
+}
+
+.social-embed-reference {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 14px;
+  color: #7c2d12;
+  font-weight: 900;
 }
 
 .sermon-video {

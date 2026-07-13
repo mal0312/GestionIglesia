@@ -41,6 +41,7 @@ export const siteContent: SiteContent = {
   ],
   news: [],
   sermons: [],
+  socialEmbeds: [],
   costNote:
     "El MVP esta preparado para comenzar con hosting gratuito y sin dominio propio requerido."
 };

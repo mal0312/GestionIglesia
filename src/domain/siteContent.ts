@@ -22,6 +22,12 @@ export type CampaignStatus = PublicationStatus;
 
 export type SermonStatus = PublicationStatus;
 
+export type SocialEmbedStatus = PublicationStatus;
+
+export type SocialEmbedPlatform = "facebook" | "instagram" | "youtube";
+
+export type SocialEmbedVisibilityIntent = "visible" | "hidden";
+
 export type EventPublication = {
   id: string;
   title: string;
@@ -54,6 +60,16 @@ export type SermonPublication = {
   status: SermonStatus;
 };
 
+export type SocialEmbedPublication = {
+  id: string;
+  title: string;
+  platform: SocialEmbedPlatform;
+  embedReference: string;
+  visibilityIntent: SocialEmbedVisibilityIntent;
+  displayOrder: number;
+  status: SocialEmbedStatus;
+};
+
 export type NewsDraftVersion = {
   title: string;
   summary: string;
@@ -81,5 +97,6 @@ export type SiteContent = {
   futureSections: FutureSection[];
   news: NewsPublication[];
   sermons: SermonPublication[];
+  socialEmbeds: SocialEmbedPublication[];
   costNote: string;
 };

@@ -6,6 +6,9 @@ import type {
   NewsPublication,
   PublicationStatus,
   SermonPublication,
+  SocialEmbedPlatform,
+  SocialEmbedPublication,
+  SocialEmbedVisibilityIntent,
   SiteContent
 } from "./domain/siteContent";
 import type {
@@ -95,6 +98,22 @@ type SermonFormValues = {
   description: string;
 };
 
+type SocialEmbedDraftInput = {
+  title: string;
+  platform: SocialEmbedPlatform;
+  embedReference: string;
+  visibilityIntent: SocialEmbedVisibilityIntent;
+  displayOrder: number;
+};
+
+type SocialEmbedFormValues = {
+  title: string;
+  platform: SocialEmbedPlatform;
+  embedReference: string;
+  visibilityIntent: SocialEmbedVisibilityIntent;
+  displayOrder: string;
+};
+
 const emptyNewsFormValues: NewsFormValues = {
   title: "",
   summary: "",
@@ -128,11 +147,30 @@ const emptySermonFormValues: SermonFormValues = {
   description: ""
 };
 
+const emptySocialEmbedFormValues: SocialEmbedFormValues = {
+  title: "",
+  platform: "facebook",
+  embedReference: "",
+  visibilityIntent: "visible",
+  displayOrder: "0"
+};
+
 const publicationStatusLabels: Record<PublicationStatus, string> = {
   draft: "Borrador",
   pending_review: "Pendiente de revision",
   published: "Publicado",
   rejected: "Rechazado"
+};
+
+const socialEmbedPlatformLabels: Record<SocialEmbedPlatform, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  youtube: "YouTube"
+};
+
+const socialEmbedVisibilityIntentLabels: Record<SocialEmbedVisibilityIntent, string> = {
+  visible: "Visible al aprobar",
+  hidden: "Oculto al aprobar"
 };
 
 const finalAuthorityActions: Array<{
@@ -160,6 +198,9 @@ export function App({
   );
   const [events, setEvents] = useState<EventPublication[]>(() => content.events);
   const [sermons, setSermons] = useState<SermonPublication[]>(() => content.sermons);
+  const [socialEmbeds, setSocialEmbeds] = useState<SocialEmbedPublication[]>(
+    () => content.socialEmbeds
+  );
 
   async function handleGoogleSignIn() {
     setAuthStatus("loading");
@@ -409,6 +450,47 @@ export function App({
     );
   }
 
+  function handleCreateDraftSocialEmbed(input: SocialEmbedDraftInput) {
+    setSocialEmbeds((currentSocialEmbeds) => [
+      ...currentSocialEmbeds,
+      {
+        ...input,
+        id: createSocialEmbedId(currentSocialEmbeds),
+        status: "draft"
+      }
+    ]);
+  }
+
+  function handleSubmitSocialEmbedForReview(socialEmbedId: string) {
+    setSocialEmbeds((currentSocialEmbeds) =>
+      currentSocialEmbeds.map((socialEmbed) =>
+        socialEmbed.id === socialEmbedId && socialEmbed.status === "draft"
+          ? { ...socialEmbed, status: "pending_review" }
+          : socialEmbed
+      )
+    );
+  }
+
+  function handleApproveSocialEmbed(socialEmbedId: string) {
+    setSocialEmbeds((currentSocialEmbeds) =>
+      currentSocialEmbeds.map((socialEmbed) =>
+        socialEmbed.id === socialEmbedId && socialEmbed.status === "pending_review"
+          ? { ...socialEmbed, status: "published" }
+          : socialEmbed
+      )
+    );
+  }
+
+  function handleRejectSocialEmbed(socialEmbedId: string) {
+    setSocialEmbeds((currentSocialEmbeds) =>
+      currentSocialEmbeds.map((socialEmbed) =>
+        socialEmbed.id === socialEmbedId && socialEmbed.status === "pending_review"
+          ? { ...socialEmbed, status: "rejected" }
+          : socialEmbed
+      )
+    );
+  }
+
   return (
     <main className="site-shell">
       <section className="hero" aria-labelledby="home-title">
@@ -441,6 +523,8 @@ export function App({
 
       <PublicSermonsSection sermons={sermons} />
 
+      <PublicSocialEmbedsSection socialEmbeds={socialEmbeds} />
+
       <section className="donation" aria-labelledby="donation-title">
         <div>
           <p className="eyebrow">Colaborar</p>
@@ -470,15 +554,18 @@ export function App({
         events={events}
         news={news}
         sermons={sermons}
+        socialEmbeds={socialEmbeds}
         onApproveCampaign={handleApproveCampaign}
         onApproveEvent={handleApproveEvent}
         onApproveNews={handleApproveNews}
         onApproveRevision={handleApproveRevision}
         onApproveSermon={handleApproveSermon}
+        onApproveSocialEmbed={handleApproveSocialEmbed}
         onCreateDraftCampaign={handleCreateDraftCampaign}
         onCreateDraftEvent={handleCreateDraftEvent}
         onCreateDraftNews={handleCreateDraftNews}
         onCreateDraftSermon={handleCreateDraftSermon}
+        onCreateDraftSocialEmbed={handleCreateDraftSocialEmbed}
         onGoogleSignIn={handleGoogleSignIn}
         onProposeRevision={handleProposeRevision}
         onRejectCampaign={handleRejectCampaign}
@@ -486,11 +573,13 @@ export function App({
         onRejectNews={handleRejectNews}
         onRejectRevision={handleRejectRevision}
         onRejectSermon={handleRejectSermon}
+        onRejectSocialEmbed={handleRejectSocialEmbed}
         onSignOut={handleSignOut}
         onSubmitCampaignForReview={handleSubmitCampaignForReview}
         onSubmitEventForReview={handleSubmitEventForReview}
         onSubmitNewsForReview={handleSubmitNewsForReview}
         onSubmitSermonForReview={handleSubmitSermonForReview}
+        onSubmitSocialEmbedForReview={handleSubmitSocialEmbedForReview}
         onUpdateDraftNews={handleUpdateDraftNews}
       />
 
@@ -507,15 +596,18 @@ type PrivatePanelProps = {
   events: EventPublication[];
   news: NewsPublication[];
   sermons: SermonPublication[];
+  socialEmbeds: SocialEmbedPublication[];
   onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
   onApproveSermon: (sermonId: string) => void;
+  onApproveSocialEmbed: (socialEmbedId: string) => void;
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onCreateDraftSermon: (input: SermonDraftInput) => void;
+  onCreateDraftSocialEmbed: (input: SocialEmbedDraftInput) => void;
   onGoogleSignIn: () => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectCampaign: (campaignId: string) => void;
@@ -523,11 +615,13 @@ type PrivatePanelProps = {
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
   onRejectSermon: (sermonId: string) => void;
+  onRejectSocialEmbed: (socialEmbedId: string) => void;
   onSignOut: () => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onSubmitSermonForReview: (sermonId: string) => void;
+  onSubmitSocialEmbedForReview: (socialEmbedId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
 };
 
@@ -539,15 +633,18 @@ function PrivatePanel({
   events,
   news,
   sermons,
+  socialEmbeds,
   onApproveCampaign,
   onApproveEvent,
   onApproveNews,
   onApproveRevision,
   onApproveSermon,
+  onApproveSocialEmbed,
   onCreateDraftCampaign,
   onCreateDraftEvent,
   onCreateDraftNews,
   onCreateDraftSermon,
+  onCreateDraftSocialEmbed,
   onGoogleSignIn,
   onProposeRevision,
   onRejectCampaign,
@@ -555,11 +652,13 @@ function PrivatePanel({
   onRejectNews,
   onRejectRevision,
   onRejectSermon,
+  onRejectSocialEmbed,
   onSignOut,
   onSubmitCampaignForReview,
   onSubmitEventForReview,
   onSubmitNewsForReview,
   onSubmitSermonForReview,
+  onSubmitSocialEmbedForReview,
   onUpdateDraftNews
 }: PrivatePanelProps) {
   return (
@@ -603,25 +702,30 @@ function PrivatePanel({
           events={events}
           news={news}
           sermons={sermons}
+          socialEmbeds={socialEmbeds}
           onApproveCampaign={onApproveCampaign}
           onApproveEvent={onApproveEvent}
           onApproveNews={onApproveNews}
           onApproveRevision={onApproveRevision}
           onApproveSermon={onApproveSermon}
+          onApproveSocialEmbed={onApproveSocialEmbed}
           onCreateDraftCampaign={onCreateDraftCampaign}
           onCreateDraftEvent={onCreateDraftEvent}
           onCreateDraftNews={onCreateDraftNews}
           onCreateDraftSermon={onCreateDraftSermon}
+          onCreateDraftSocialEmbed={onCreateDraftSocialEmbed}
           onProposeRevision={onProposeRevision}
           onRejectCampaign={onRejectCampaign}
           onRejectEvent={onRejectEvent}
           onRejectNews={onRejectNews}
           onRejectRevision={onRejectRevision}
           onRejectSermon={onRejectSermon}
+          onRejectSocialEmbed={onRejectSocialEmbed}
           onSubmitCampaignForReview={onSubmitCampaignForReview}
           onSubmitEventForReview={onSubmitEventForReview}
           onSubmitNewsForReview={onSubmitNewsForReview}
           onSubmitSermonForReview={onSubmitSermonForReview}
+          onSubmitSocialEmbedForReview={onSubmitSocialEmbedForReview}
           onUpdateDraftNews={onUpdateDraftNews}
           user={currentUser}
         />
@@ -647,25 +751,30 @@ type RoleStartSurfaceProps = {
   events: EventPublication[];
   news: NewsPublication[];
   sermons: SermonPublication[];
+  socialEmbeds: SocialEmbedPublication[];
   onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
   onApproveSermon: (sermonId: string) => void;
+  onApproveSocialEmbed: (socialEmbedId: string) => void;
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onCreateDraftSermon: (input: SermonDraftInput) => void;
+  onCreateDraftSocialEmbed: (input: SocialEmbedDraftInput) => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
   onRejectSermon: (sermonId: string) => void;
+  onRejectSocialEmbed: (socialEmbedId: string) => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onSubmitSermonForReview: (sermonId: string) => void;
+  onSubmitSocialEmbedForReview: (socialEmbedId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
   user: AuthenticatedUser;
 };
@@ -675,25 +784,30 @@ function RoleStartSurface({
   events,
   news,
   sermons,
+  socialEmbeds,
   onApproveCampaign,
   onApproveEvent,
   onApproveNews,
   onApproveRevision,
   onApproveSermon,
+  onApproveSocialEmbed,
   onCreateDraftCampaign,
   onCreateDraftEvent,
   onCreateDraftNews,
   onCreateDraftSermon,
+  onCreateDraftSocialEmbed,
   onProposeRevision,
   onRejectCampaign,
   onRejectEvent,
   onRejectNews,
   onRejectRevision,
   onRejectSermon,
+  onRejectSocialEmbed,
   onSubmitCampaignForReview,
   onSubmitEventForReview,
   onSubmitNewsForReview,
   onSubmitSermonForReview,
+  onSubmitSocialEmbedForReview,
   onUpdateDraftNews,
   user
 }: RoleStartSurfaceProps) {
@@ -772,6 +886,15 @@ function RoleStartSurface({
         onRejectSermon={onRejectSermon}
         onSubmitSermonForReview={onSubmitSermonForReview}
         sermons={sermons}
+        user={user}
+      />
+
+      <SocialEmbedEditorialWorkspace
+        onApproveSocialEmbed={onApproveSocialEmbed}
+        onCreateDraftSocialEmbed={onCreateDraftSocialEmbed}
+        onRejectSocialEmbed={onRejectSocialEmbed}
+        onSubmitSocialEmbedForReview={onSubmitSocialEmbedForReview}
+        socialEmbeds={socialEmbeds}
         user={user}
       />
 
@@ -979,6 +1102,80 @@ function PublicSermonsSection({ sermons }: { sermons: SermonPublication[] }) {
   );
 }
 
+function PublicSocialEmbedsSection({
+  socialEmbeds
+}: {
+  socialEmbeds: SocialEmbedPublication[];
+}) {
+  const publishedSocialEmbeds = socialEmbeds
+    .filter(
+      (socialEmbed) =>
+        socialEmbed.status === "published" &&
+        socialEmbed.visibilityIntent === "visible"
+    )
+    .sort(compareSocialEmbedDisplayOrder);
+
+  return (
+    <section className="public-social-embeds" aria-labelledby="public-social-title">
+      <div>
+        <p className="eyebrow">Redes sociales</p>
+        <h2 id="public-social-title">Embeds sociales publicados</h2>
+      </div>
+
+      {publishedSocialEmbeds.length > 0 ? (
+        <div className="news-grid">
+          {publishedSocialEmbeds.map((socialEmbed) => (
+            <PublicSocialEmbedCard key={socialEmbed.id} socialEmbed={socialEmbed} />
+          ))}
+        </div>
+      ) : (
+        <p className="empty-news-note">Todavia no hay embeds sociales publicados.</p>
+      )}
+    </section>
+  );
+}
+
+function PublicSocialEmbedCard({
+  socialEmbed
+}: {
+  socialEmbed: SocialEmbedPublication;
+}) {
+  const titleId = `${socialEmbed.id}-public-title`;
+  const youtubeEmbedUrl =
+    socialEmbed.platform === "youtube"
+      ? createYouTubeEmbedUrl(socialEmbed.embedReference)
+      : null;
+  const referenceUrl = createExternalUrl(socialEmbed.embedReference);
+
+  return (
+    <article className="public-news-card" aria-labelledby={titleId}>
+      <h3 id={titleId}>{socialEmbed.title}</h3>
+      <p>Plataforma: {socialEmbedPlatformLabels[socialEmbed.platform]}</p>
+      {youtubeEmbedUrl ? (
+        <div className="sermon-video">
+          <iframe
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            src={youtubeEmbedUrl}
+            title={`Embed social: ${socialEmbed.title}`}
+          />
+        </div>
+      ) : referenceUrl ? (
+        <a className="social-embed-reference" href={referenceUrl} rel="noreferrer" target="_blank">
+          Abrir contenido manual
+        </a>
+      ) : (
+        <p className="news-image-reference">
+          Referencia manual: {socialEmbed.embedReference}
+        </p>
+      )}
+      <p className="campaign-guardrail">
+        Contenido agregado manualmente; sin publicacion automatica ni Meta APIs.
+      </p>
+    </article>
+  );
+}
+
 type NewsEditorialWorkspaceProps = {
   news: NewsPublication[];
   onApproveNews: (newsId: string) => void;
@@ -1016,6 +1213,15 @@ type SermonEditorialWorkspaceProps = {
   onCreateDraftSermon: (input: SermonDraftInput) => void;
   onRejectSermon: (sermonId: string) => void;
   onSubmitSermonForReview: (sermonId: string) => void;
+  user: AuthenticatedUser;
+};
+
+type SocialEmbedEditorialWorkspaceProps = {
+  socialEmbeds: SocialEmbedPublication[];
+  onApproveSocialEmbed: (socialEmbedId: string) => void;
+  onCreateDraftSocialEmbed: (input: SocialEmbedDraftInput) => void;
+  onRejectSocialEmbed: (socialEmbedId: string) => void;
+  onSubmitSocialEmbedForReview: (socialEmbedId: string) => void;
   user: AuthenticatedUser;
 };
 
@@ -1524,6 +1730,198 @@ function SermonPanelCard({
   );
 }
 
+function SocialEmbedEditorialWorkspace({
+  socialEmbeds,
+  onApproveSocialEmbed,
+  onCreateDraftSocialEmbed,
+  onRejectSocialEmbed,
+  onSubmitSocialEmbedForReview,
+  user
+}: SocialEmbedEditorialWorkspaceProps) {
+  const [formValues, setFormValues] = useState<SocialEmbedFormValues>(
+    emptySocialEmbedFormValues
+  );
+
+  function handleFormChange<T extends keyof SocialEmbedFormValues>(
+    field: T,
+    value: SocialEmbedFormValues[T]
+  ) {
+    setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const input = normalizeSocialEmbedFormValues(formValues);
+
+    if (!isCompleteSocialEmbedDraft(input)) {
+      return;
+    }
+
+    onCreateDraftSocialEmbed(input);
+    setFormValues(emptySocialEmbedFormValues);
+  }
+
+  return (
+    <div className="news-workspace">
+      {user.role === "editor" ? (
+        <form className="news-form" onSubmit={handleFormSubmit}>
+          <h4>Nuevo Borrador Embed social</h4>
+          <label>
+            Titulo del embed social
+            <input
+              onChange={(event) => handleFormChange("title", event.target.value)}
+              required
+              type="text"
+              value={formValues.title}
+            />
+          </label>
+          <label>
+            Plataforma
+            <select
+              onChange={(event) =>
+                handleFormChange("platform", event.target.value as SocialEmbedPlatform)
+              }
+              required
+              value={formValues.platform}
+            >
+              {Object.entries(socialEmbedPlatformLabels).map(([platform, label]) => (
+                <option key={platform} value={platform}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            URL o referencia de embed
+            <input
+              onChange={(event) =>
+                handleFormChange("embedReference", event.target.value)
+              }
+              required
+              type="text"
+              value={formValues.embedReference}
+            />
+          </label>
+          <label>
+            Intencion de visibilidad
+            <select
+              onChange={(event) =>
+                handleFormChange(
+                  "visibilityIntent",
+                  event.target.value as SocialEmbedVisibilityIntent
+                )
+              }
+              required
+              value={formValues.visibilityIntent}
+            >
+              {Object.entries(socialEmbedVisibilityIntentLabels).map(
+                ([visibilityIntent, label]) => (
+                  <option key={visibilityIntent} value={visibilityIntent}>
+                    {label}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+          <label>
+            Orden de aparicion
+            <input
+              onChange={(event) => handleFormChange("displayOrder", event.target.value)}
+              type="number"
+              value={formValues.displayOrder}
+            />
+          </label>
+          <div className="action-row">
+            <button type="submit">Crear borrador de embed social</button>
+          </div>
+        </form>
+      ) : null}
+
+      <section className="news-review-panel" aria-labelledby="social-embed-review-title">
+        <h4 id="social-embed-review-title">
+          {user.role === "admin"
+            ? "Revision de Embeds sociales"
+            : "Embeds sociales en preparacion"}
+        </h4>
+        {socialEmbeds.length > 0 ? (
+          <div className="news-list">
+            {socialEmbeds.map((socialEmbed) => (
+              <SocialEmbedPanelCard
+                key={socialEmbed.id}
+                onApproveSocialEmbed={onApproveSocialEmbed}
+                onRejectSocialEmbed={onRejectSocialEmbed}
+                onSubmitForReview={onSubmitSocialEmbedForReview}
+                socialEmbed={socialEmbed}
+                user={user}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-news-note">Aun no hay Embeds sociales en el panel.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+type SocialEmbedPanelCardProps = {
+  socialEmbed: SocialEmbedPublication;
+  onApproveSocialEmbed: (socialEmbedId: string) => void;
+  onRejectSocialEmbed: (socialEmbedId: string) => void;
+  onSubmitForReview: (socialEmbedId: string) => void;
+  user: AuthenticatedUser;
+};
+
+function SocialEmbedPanelCard({
+  socialEmbed,
+  onApproveSocialEmbed,
+  onRejectSocialEmbed,
+  onSubmitForReview,
+  user
+}: SocialEmbedPanelCardProps) {
+  const titleId = `${socialEmbed.id}-panel-title`;
+
+  return (
+    <article className="news-panel-card" aria-labelledby={titleId}>
+      <div className="news-card-header">
+        <span className={`status-badge status-${socialEmbed.status}`}>
+          {publicationStatusLabels[socialEmbed.status]}
+        </span>
+        <h5 id={titleId}>{socialEmbed.title}</h5>
+      </div>
+      <p>Plataforma: {socialEmbedPlatformLabels[socialEmbed.platform]}</p>
+      <p className="news-image-reference">Referencia: {socialEmbed.embedReference}</p>
+      <p>
+        Visibilidad: {socialEmbedVisibilityIntentLabels[socialEmbed.visibilityIntent]}
+      </p>
+      <p>Orden: {socialEmbed.displayOrder}</p>
+      <p className="campaign-guardrail">
+        Manual solamente: no publica automaticamente ni sincroniza con Meta APIs.
+      </p>
+
+      {user.role === "editor" && socialEmbed.status === "draft" ? (
+        <div className="action-row">
+          <button onClick={() => onSubmitForReview(socialEmbed.id)} type="button">
+            Enviar embed social a revision
+          </button>
+        </div>
+      ) : null}
+
+      {user.role === "admin" && socialEmbed.status === "pending_review" ? (
+        <div className="action-row">
+          <button onClick={() => onApproveSocialEmbed(socialEmbed.id)} type="button">
+            Aprobar embed social
+          </button>
+          <button onClick={() => onRejectSocialEmbed(socialEmbed.id)} type="button">
+            Rechazar embed social
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function NewsEditorialWorkspace({
   news,
   onApproveNews,
@@ -1806,6 +2204,10 @@ function createSermonId(currentSermons: SermonPublication[]) {
   return `predicacion-${currentSermons.length + 1}`;
 }
 
+function createSocialEmbedId(currentSocialEmbeds: SocialEmbedPublication[]) {
+  return `social-embed-${currentSocialEmbeds.length + 1}`;
+}
+
 function normalizeCampaignFormValues(values: CampaignFormValues): CampaignDraftInput {
   const videoUrl = values.videoUrl.trim();
 
@@ -1873,6 +2275,31 @@ function isCompleteSermonDraft(input: SermonDraftInput) {
   );
 }
 
+function normalizeSocialEmbedFormValues(
+  values: SocialEmbedFormValues
+): SocialEmbedDraftInput {
+  const displayOrder = Number(values.displayOrder);
+
+  return {
+    title: values.title.trim(),
+    platform: values.platform,
+    embedReference: values.embedReference.trim(),
+    visibilityIntent: values.visibilityIntent,
+    displayOrder: Number.isFinite(displayOrder) ? displayOrder : 0
+  };
+}
+
+function isCompleteSocialEmbedDraft(input: SocialEmbedDraftInput) {
+  return input.title.length > 0 && input.embedReference.length > 0;
+}
+
+function compareSocialEmbedDisplayOrder(
+  first: SocialEmbedPublication,
+  second: SocialEmbedPublication
+) {
+  return first.displayOrder - second.displayOrder;
+}
+
 function hasEventEnded(eventItem: EventPublication, now: Date) {
   const startsAtTime = new Date(eventItem.startsAt).getTime();
 
@@ -1899,6 +2326,16 @@ function createYouTubeEmbedUrl(youtubeUrl: string) {
   const videoId = getYouTubeVideoId(youtubeUrl);
 
   return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : null;
+}
+
+function createExternalUrl(reference: string) {
+  try {
+    const url = new URL(reference);
+
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function getYouTubeVideoId(youtubeUrl: string) {

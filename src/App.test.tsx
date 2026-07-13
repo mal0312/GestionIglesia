@@ -7,6 +7,7 @@ import type {
   EventPublication,
   NewsPublication,
   SermonPublication,
+  SocialEmbedPublication,
   SiteContent
 } from "./domain/siteContent";
 
@@ -34,6 +35,7 @@ const content: SiteContent = {
   ],
   news: [],
   sermons: [],
+  socialEmbeds: [],
   costNote: "Hosting gratuito y sin dominio propio requerido."
 };
 
@@ -929,6 +931,193 @@ describe("Predicacion editorial flow", () => {
       within(publicSermons).getByTitle("Video de predicacion: Gracia para hoy")
     ).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/ghi789RST34");
     expect(within(publicSermons).queryByText("Predicacion interna"))
+      .not.toBeInTheDocument();
+  });
+});
+
+describe("SocialEmbed editorial flow", () => {
+  const socialEmbeds: SocialEmbedPublication[] = [
+    {
+      id: "social-1",
+      title: "YouTube visible",
+      platform: "youtube",
+      embedReference: "https://www.youtube.com/watch?v=abc123XYZ09",
+      visibilityIntent: "visible",
+      displayOrder: 2,
+      status: "published"
+    },
+    {
+      id: "social-2",
+      title: "Facebook visible",
+      platform: "facebook",
+      embedReference: "https://www.facebook.com/iglesia/posts/123",
+      visibilityIntent: "visible",
+      displayOrder: 1,
+      status: "published"
+    },
+    {
+      id: "social-3",
+      title: "Instagram pendiente",
+      platform: "instagram",
+      embedReference: "https://www.instagram.com/p/pendiente/",
+      visibilityIntent: "visible",
+      displayOrder: 3,
+      status: "pending_review"
+    },
+    {
+      id: "social-4",
+      title: "YouTube oculto",
+      platform: "youtube",
+      embedReference: "https://www.youtube.com/watch?v=def456UVW12",
+      visibilityIntent: "hidden",
+      displayOrder: 4,
+      status: "published"
+    },
+    {
+      id: "social-5",
+      title: "Facebook rechazada",
+      platform: "facebook",
+      embedReference: "https://www.facebook.com/iglesia/posts/rechazada",
+      visibilityIntent: "visible",
+      displayOrder: 5,
+      status: "rejected"
+    }
+  ];
+
+  it("shows only approved visible SocialEmbeds publicly in display order", () => {
+    render(<App content={{ ...content, socialEmbeds }} />);
+
+    const publicSocialEmbeds = screen.getByRole("region", {
+      name: "Embeds sociales publicados"
+    });
+    const publicCards = within(publicSocialEmbeds).getAllByRole("article");
+
+    expect(
+      publicCards.map(
+        (card) => within(card).getByRole("heading", { level: 3 }).textContent
+      )
+    ).toEqual(["Facebook visible", "YouTube visible"]);
+    expect(
+      within(publicSocialEmbeds).getByRole("link", { name: "Abrir contenido manual" })
+    ).toHaveAttribute("href", "https://www.facebook.com/iglesia/posts/123");
+    expect(within(publicSocialEmbeds).getByTitle("Embed social: YouTube visible"))
+      .toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123XYZ09");
+    expect(
+      within(publicSocialEmbeds).getAllByText(
+        "Contenido agregado manualmente; sin publicacion automatica ni Meta APIs."
+      )
+    ).toHaveLength(2);
+    expect(within(publicSocialEmbeds).queryByText("Instagram pendiente"))
+      .not.toBeInTheDocument();
+    expect(within(publicSocialEmbeds).queryByText("YouTube oculto"))
+      .not.toBeInTheDocument();
+    expect(within(publicSocialEmbeds).queryByText("Facebook rechazada"))
+      .not.toBeInTheDocument();
+  });
+
+  it("lets an Editor submit manual SocialEmbeds and an Administrador approve or reject them", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicSocialEmbeds = screen.getByRole("region", {
+      name: "Embeds sociales publicados"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo del embed social"), {
+      target: { value: "Culto en vivo" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Plataforma"), {
+      target: { value: "youtube" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL o referencia de embed"), {
+      target: { value: "https://www.youtube.com/watch?v=ghi789RST34" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Intencion de visibilidad"), {
+      target: { value: "visible" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Orden de aparicion"), {
+      target: { value: "1" }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de embed social" })
+    );
+    const approvedDraft = within(panel).getByRole("article", { name: "Culto en vivo" });
+    fireEvent.click(
+      within(approvedDraft).getByRole("button", {
+        name: "Enviar embed social a revision"
+      })
+    );
+
+    fireEvent.change(within(panel).getByLabelText("Titulo del embed social"), {
+      target: { value: "Historia de Instagram" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Plataforma"), {
+      target: { value: "instagram" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL o referencia de embed"), {
+      target: { value: "https://www.instagram.com/p/rechazada/" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Orden de aparicion"), {
+      target: { value: "2" }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de embed social" })
+    );
+    const rejectedDraft = within(panel).getByRole("article", {
+      name: "Historia de Instagram"
+    });
+    fireEvent.click(
+      within(rejectedDraft).getByRole("button", {
+        name: "Enviar embed social a revision"
+      })
+    );
+
+    expect(within(publicSocialEmbeds).queryByText("Culto en vivo"))
+      .not.toBeInTheDocument();
+    expect(within(publicSocialEmbeds).queryByText("Historia de Instagram"))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", { name: "Culto en vivo" });
+    fireEvent.click(
+      within(approvedCard).getByRole("button", { name: "Aprobar embed social" })
+    );
+
+    const rejectedCard = within(panel).getByRole("article", {
+      name: "Historia de Instagram"
+    });
+    fireEvent.click(
+      within(rejectedCard).getByRole("button", { name: "Rechazar embed social" })
+    );
+
+    expect(within(approvedCard).getByText("Publicado")).toBeInTheDocument();
+    expect(within(rejectedCard).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(publicSocialEmbeds).getByText("Culto en vivo")).toBeInTheDocument();
+    expect(within(publicSocialEmbeds).getByTitle("Embed social: Culto en vivo"))
+      .toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/ghi789RST34");
+    expect(within(publicSocialEmbeds).queryByText("Historia de Instagram"))
       .not.toBeInTheDocument();
   });
 });
