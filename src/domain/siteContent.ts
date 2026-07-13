@@ -20,6 +20,8 @@ export type EventStatus = PublicationStatus;
 
 export type CampaignStatus = PublicationStatus;
 
+export type SermonStatus = PublicationStatus;
+
 export type EventPublication = {
   id: string;
   title: string;
@@ -39,6 +41,17 @@ export type CampaignPublication = {
   videoUrl?: string;
   callToActionText: string;
   status: CampaignStatus;
+};
+
+export type SermonPublication = {
+  id: string;
+  title: string;
+  youtubeUrl: string;
+  preacher: string;
+  sermonDate: string;
+  series: string;
+  description?: string;
+  status: SermonStatus;
 };
 
 export type NewsDraftVersion = {
@@ -67,5 +80,6 @@ export type SiteContent = {
   events: EventPublication[];
   futureSections: FutureSection[];
   news: NewsPublication[];
+  sermons: SermonPublication[];
   costNote: string;
 };

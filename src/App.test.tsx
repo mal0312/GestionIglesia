@@ -6,6 +6,7 @@ import type {
   CampaignPublication,
   EventPublication,
   NewsPublication,
+  SermonPublication,
   SiteContent
 } from "./domain/siteContent";
 
@@ -32,6 +33,7 @@ const content: SiteContent = {
     { title: "Predicaciones", description: "Mensajes con YouTube." }
   ],
   news: [],
+  sermons: [],
   costNote: "Hosting gratuito y sin dominio propio requerido."
 };
 
@@ -75,7 +77,9 @@ describe("public home", () => {
     expect(screen.getByText("Eventos")).toBeInTheDocument();
     expect(screen.getByText("Campanas")).toBeInTheDocument();
     expect(screen.getByText("Noticias")).toBeInTheDocument();
-    expect(screen.getByText("Predicaciones")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Predicaciones" })
+    ).toBeInTheDocument();
 
     const donation = screen.getByRole("region", {
       name: "Donacion economica"
@@ -675,6 +679,256 @@ describe("Campana editorial flow", () => {
     expect(within(rejectedCard).getByText("Rechazado")).toBeInTheDocument();
     expect(within(publicCampaigns).getByText("Biblias para jovenes")).toBeInTheDocument();
     expect(within(publicCampaigns).queryByText("Campana interna"))
+      .not.toBeInTheDocument();
+  });
+});
+
+describe("Predicacion editorial flow", () => {
+  const sermons: SermonPublication[] = [
+    {
+      id: "predicacion-1",
+      title: "La fe que sirve",
+      youtubeUrl: "https://www.youtube.com/watch?v=abc123XYZ09",
+      preacher: "Pastora Ana",
+      sermonDate: "2026-07-05",
+      series: "Fe practica",
+      description: "Una predicacion sobre servir a otros.",
+      status: "published"
+    },
+    {
+      id: "predicacion-2",
+      title: "Borrador de predicacion",
+      youtubeUrl: "https://www.youtube.com/watch?v=bbb123XYZ09",
+      preacher: "Editor",
+      sermonDate: "2026-07-06",
+      series: "No visible",
+      status: "draft"
+    },
+    {
+      id: "predicacion-3",
+      title: "Predicacion pendiente",
+      youtubeUrl: "https://www.youtube.com/watch?v=ccc123XYZ09",
+      preacher: "Editor",
+      sermonDate: "2026-07-07",
+      series: "No visible",
+      status: "pending_review"
+    },
+    {
+      id: "predicacion-4",
+      title: "Predicacion rechazada",
+      youtubeUrl: "https://www.youtube.com/watch?v=ddd123XYZ09",
+      preacher: "Editor",
+      sermonDate: "2026-07-08",
+      series: "No visible",
+      status: "rejected"
+    }
+  ];
+
+  it("shows only published Predicaciones publicly with a YouTube embed", () => {
+    render(<App content={{ ...content, sermons }} />);
+
+    const publicSermons = screen.getByRole("region", {
+      name: "Predicaciones publicadas"
+    });
+    const sermonCard = within(publicSermons).getByRole("article", {
+      name: "La fe que sirve"
+    });
+
+    expect(
+      within(sermonCard).getByTitle("Video de predicacion: La fe que sirve")
+    ).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123XYZ09");
+    expect(within(sermonCard).getByText("Predicador: Pastora Ana")).toBeInTheDocument();
+    expect(within(sermonCard).getByText("Fecha: 2026-07-05")).toBeInTheDocument();
+    expect(within(sermonCard).getByText("Serie: Fe practica")).toBeInTheDocument();
+    expect(
+      within(sermonCard).getByText("Una predicacion sobre servir a otros.")
+    ).toBeInTheDocument();
+    expect(within(publicSermons).queryByText("Borrador de predicacion"))
+      .not.toBeInTheDocument();
+    expect(within(publicSermons).queryByText("Predicacion pendiente"))
+      .not.toBeInTheDocument();
+    expect(within(publicSermons).queryByText("Predicacion rechazada"))
+      .not.toBeInTheDocument();
+  });
+
+  it("lets an Editor create and submit a Predicacion draft for review", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+      />
+    );
+
+    const publicSermons = screen.getByRole("region", {
+      name: "Predicaciones publicadas"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+    expect(panel.querySelector('input[type="file"]')).toBeNull();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la predicacion"), {
+      target: { value: "Cristo en el centro" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL de YouTube"), {
+      target: { value: "https://youtu.be/def456UVW12" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Predicador"), {
+      target: { value: "Pastor Luis" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha de la predicacion"), {
+      target: { value: "2026-07-12" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Serie"), {
+      target: { value: "Evangelio" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion (opcional)"), {
+      target: { value: "Mensaje dominical desde YouTube." }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de predicacion" })
+    );
+
+    const sermonCard = within(panel).getByRole("article", {
+      name: "Cristo en el centro"
+    });
+    expect(within(sermonCard).getByText("Borrador")).toBeInTheDocument();
+    expect(
+      within(sermonCard).getByText("YouTube: https://youtu.be/def456UVW12")
+    ).toBeInTheDocument();
+    expect(within(sermonCard).getByText("Predicador: Pastor Luis")).toBeInTheDocument();
+    expect(within(sermonCard).getByText("Fecha: 2026-07-12")).toBeInTheDocument();
+    expect(within(sermonCard).getByText("Serie: Evangelio")).toBeInTheDocument();
+    expect(within(publicSermons).queryByText("Cristo en el centro"))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(sermonCard).getByRole("button", {
+        name: "Enviar predicacion a revision"
+      })
+    );
+
+    expect(within(sermonCard).getByText("Pendiente de revision")).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Aprobar predicacion" }))
+      .not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Rechazar predicacion" }))
+      .not.toBeInTheDocument();
+    expect(within(publicSermons).queryByText("Cristo en el centro"))
+      .not.toBeInTheDocument();
+  });
+
+  it("lets an Administrador approve or reject pending Predicaciones and controls public visibility", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicSermons = screen.getByRole("region", {
+      name: "Predicaciones publicadas"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la predicacion"), {
+      target: { value: "Gracia para hoy" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL de YouTube"), {
+      target: { value: "https://www.youtube.com/watch?v=ghi789RST34" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Predicador"), {
+      target: { value: "Pastora Ana" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha de la predicacion"), {
+      target: { value: "2026-07-13" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Serie"), {
+      target: { value: "Gracia" }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de predicacion" })
+    );
+    const approvedDraft = within(panel).getByRole("article", { name: "Gracia para hoy" });
+    fireEvent.click(
+      within(approvedDraft).getByRole("button", {
+        name: "Enviar predicacion a revision"
+      })
+    );
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la predicacion"), {
+      target: { value: "Predicacion interna" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL de YouTube"), {
+      target: { value: "https://www.youtube.com/watch?v=jkl012MNO56" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Predicador"), {
+      target: { value: "Editor" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha de la predicacion"), {
+      target: { value: "2026-07-14" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Serie"), {
+      target: { value: "Interna" }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de predicacion" })
+    );
+    const rejectedDraft = within(panel).getByRole("article", {
+      name: "Predicacion interna"
+    });
+    fireEvent.click(
+      within(rejectedDraft).getByRole("button", {
+        name: "Enviar predicacion a revision"
+      })
+    );
+
+    expect(within(publicSermons).queryByText("Gracia para hoy")).not.toBeInTheDocument();
+    expect(within(publicSermons).queryByText("Predicacion interna"))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", { name: "Gracia para hoy" });
+    fireEvent.click(
+      within(approvedCard).getByRole("button", { name: "Aprobar predicacion" })
+    );
+
+    const rejectedCard = within(panel).getByRole("article", {
+      name: "Predicacion interna"
+    });
+    fireEvent.click(
+      within(rejectedCard).getByRole("button", { name: "Rechazar predicacion" })
+    );
+
+    expect(within(approvedCard).getByText("Publicado")).toBeInTheDocument();
+    expect(within(rejectedCard).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(publicSermons).getByText("Gracia para hoy")).toBeInTheDocument();
+    expect(
+      within(publicSermons).getByTitle("Video de predicacion: Gracia para hoy")
+    ).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/ghi789RST34");
+    expect(within(publicSermons).queryByText("Predicacion interna"))
       .not.toBeInTheDocument();
   });
 });

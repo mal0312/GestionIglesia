@@ -5,6 +5,7 @@ import type {
   NewsDraftVersion,
   NewsPublication,
   PublicationStatus,
+  SermonPublication,
   SiteContent
 } from "./domain/siteContent";
 import type {
@@ -76,6 +77,24 @@ type EventFormValues = {
   flyerReference: string;
 };
 
+type SermonDraftInput = {
+  title: string;
+  youtubeUrl: string;
+  preacher: string;
+  sermonDate: string;
+  series: string;
+  description?: string;
+};
+
+type SermonFormValues = {
+  title: string;
+  youtubeUrl: string;
+  preacher: string;
+  sermonDate: string;
+  series: string;
+  description: string;
+};
+
 const emptyNewsFormValues: NewsFormValues = {
   title: "",
   summary: "",
@@ -98,6 +117,15 @@ const emptyEventFormValues: EventFormValues = {
   location: "",
   organizer: "",
   flyerReference: ""
+};
+
+const emptySermonFormValues: SermonFormValues = {
+  title: "",
+  youtubeUrl: "",
+  preacher: "",
+  sermonDate: "",
+  series: "",
+  description: ""
 };
 
 const publicationStatusLabels: Record<PublicationStatus, string> = {
@@ -131,6 +159,7 @@ export function App({
     () => content.campaigns
   );
   const [events, setEvents] = useState<EventPublication[]>(() => content.events);
+  const [sermons, setSermons] = useState<SermonPublication[]>(() => content.sermons);
 
   async function handleGoogleSignIn() {
     setAuthStatus("loading");
@@ -339,6 +368,47 @@ export function App({
     );
   }
 
+  function handleCreateDraftSermon(input: SermonDraftInput) {
+    setSermons((currentSermons) => [
+      ...currentSermons,
+      {
+        ...input,
+        id: createSermonId(currentSermons),
+        status: "draft"
+      }
+    ]);
+  }
+
+  function handleSubmitSermonForReview(sermonId: string) {
+    setSermons((currentSermons) =>
+      currentSermons.map((sermon) =>
+        sermon.id === sermonId && sermon.status === "draft"
+          ? { ...sermon, status: "pending_review" }
+          : sermon
+      )
+    );
+  }
+
+  function handleApproveSermon(sermonId: string) {
+    setSermons((currentSermons) =>
+      currentSermons.map((sermon) =>
+        sermon.id === sermonId && sermon.status === "pending_review"
+          ? { ...sermon, status: "published" }
+          : sermon
+      )
+    );
+  }
+
+  function handleRejectSermon(sermonId: string) {
+    setSermons((currentSermons) =>
+      currentSermons.map((sermon) =>
+        sermon.id === sermonId && sermon.status === "pending_review"
+          ? { ...sermon, status: "rejected" }
+          : sermon
+      )
+    );
+  }
+
   return (
     <main className="site-shell">
       <section className="hero" aria-labelledby="home-title">
@@ -369,6 +439,8 @@ export function App({
 
       <PublicNewsSection news={news} />
 
+      <PublicSermonsSection sermons={sermons} />
+
       <section className="donation" aria-labelledby="donation-title">
         <div>
           <p className="eyebrow">Colaborar</p>
@@ -397,23 +469,28 @@ export function App({
         currentUser={currentUser}
         events={events}
         news={news}
+        sermons={sermons}
         onApproveCampaign={handleApproveCampaign}
         onApproveEvent={handleApproveEvent}
         onApproveNews={handleApproveNews}
         onApproveRevision={handleApproveRevision}
+        onApproveSermon={handleApproveSermon}
         onCreateDraftCampaign={handleCreateDraftCampaign}
         onCreateDraftEvent={handleCreateDraftEvent}
         onCreateDraftNews={handleCreateDraftNews}
+        onCreateDraftSermon={handleCreateDraftSermon}
         onGoogleSignIn={handleGoogleSignIn}
         onProposeRevision={handleProposeRevision}
         onRejectCampaign={handleRejectCampaign}
         onRejectEvent={handleRejectEvent}
         onRejectNews={handleRejectNews}
         onRejectRevision={handleRejectRevision}
+        onRejectSermon={handleRejectSermon}
         onSignOut={handleSignOut}
         onSubmitCampaignForReview={handleSubmitCampaignForReview}
         onSubmitEventForReview={handleSubmitEventForReview}
         onSubmitNewsForReview={handleSubmitNewsForReview}
+        onSubmitSermonForReview={handleSubmitSermonForReview}
         onUpdateDraftNews={handleUpdateDraftNews}
       />
 
@@ -429,23 +506,28 @@ type PrivatePanelProps = {
   currentUser: AuthenticatedUser | null;
   events: EventPublication[];
   news: NewsPublication[];
+  sermons: SermonPublication[];
   onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
+  onApproveSermon: (sermonId: string) => void;
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
+  onCreateDraftSermon: (input: SermonDraftInput) => void;
   onGoogleSignIn: () => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
+  onRejectSermon: (sermonId: string) => void;
   onSignOut: () => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
+  onSubmitSermonForReview: (sermonId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
 };
 
@@ -456,23 +538,28 @@ function PrivatePanel({
   currentUser,
   events,
   news,
+  sermons,
   onApproveCampaign,
   onApproveEvent,
   onApproveNews,
   onApproveRevision,
+  onApproveSermon,
   onCreateDraftCampaign,
   onCreateDraftEvent,
   onCreateDraftNews,
+  onCreateDraftSermon,
   onGoogleSignIn,
   onProposeRevision,
   onRejectCampaign,
   onRejectEvent,
   onRejectNews,
   onRejectRevision,
+  onRejectSermon,
   onSignOut,
   onSubmitCampaignForReview,
   onSubmitEventForReview,
   onSubmitNewsForReview,
+  onSubmitSermonForReview,
   onUpdateDraftNews
 }: PrivatePanelProps) {
   return (
@@ -515,21 +602,26 @@ function PrivatePanel({
           campaigns={campaigns}
           events={events}
           news={news}
+          sermons={sermons}
           onApproveCampaign={onApproveCampaign}
           onApproveEvent={onApproveEvent}
           onApproveNews={onApproveNews}
           onApproveRevision={onApproveRevision}
+          onApproveSermon={onApproveSermon}
           onCreateDraftCampaign={onCreateDraftCampaign}
           onCreateDraftEvent={onCreateDraftEvent}
           onCreateDraftNews={onCreateDraftNews}
+          onCreateDraftSermon={onCreateDraftSermon}
           onProposeRevision={onProposeRevision}
           onRejectCampaign={onRejectCampaign}
           onRejectEvent={onRejectEvent}
           onRejectNews={onRejectNews}
           onRejectRevision={onRejectRevision}
+          onRejectSermon={onRejectSermon}
           onSubmitCampaignForReview={onSubmitCampaignForReview}
           onSubmitEventForReview={onSubmitEventForReview}
           onSubmitNewsForReview={onSubmitNewsForReview}
+          onSubmitSermonForReview={onSubmitSermonForReview}
           onUpdateDraftNews={onUpdateDraftNews}
           user={currentUser}
         />
@@ -554,21 +646,26 @@ type RoleStartSurfaceProps = {
   campaigns: CampaignPublication[];
   events: EventPublication[];
   news: NewsPublication[];
+  sermons: SermonPublication[];
   onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
+  onApproveSermon: (sermonId: string) => void;
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
+  onCreateDraftSermon: (input: SermonDraftInput) => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
   onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
+  onRejectSermon: (sermonId: string) => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
+  onSubmitSermonForReview: (sermonId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
   user: AuthenticatedUser;
 };
@@ -577,21 +674,26 @@ function RoleStartSurface({
   campaigns,
   events,
   news,
+  sermons,
   onApproveCampaign,
   onApproveEvent,
   onApproveNews,
   onApproveRevision,
+  onApproveSermon,
   onCreateDraftCampaign,
   onCreateDraftEvent,
   onCreateDraftNews,
+  onCreateDraftSermon,
   onProposeRevision,
   onRejectCampaign,
   onRejectEvent,
   onRejectNews,
   onRejectRevision,
+  onRejectSermon,
   onSubmitCampaignForReview,
   onSubmitEventForReview,
   onSubmitNewsForReview,
+  onSubmitSermonForReview,
   onUpdateDraftNews,
   user
 }: RoleStartSurfaceProps) {
@@ -622,6 +724,7 @@ function RoleStartSurface({
             <button type="button">Usar formulario de Noticia</button>
             <button type="button">Usar formulario de Evento</button>
             <button type="button">Usar formulario de Campana</button>
+            <button type="button">Usar formulario de Predicacion</button>
             <button type="button">Editar pendientes</button>
             <button type="button">Gestionar embeds sociales</button>
           </div>
@@ -660,6 +763,15 @@ function RoleStartSurface({
         onCreateDraftCampaign={onCreateDraftCampaign}
         onRejectCampaign={onRejectCampaign}
         onSubmitCampaignForReview={onSubmitCampaignForReview}
+        user={user}
+      />
+
+      <SermonEditorialWorkspace
+        onApproveSermon={onApproveSermon}
+        onCreateDraftSermon={onCreateDraftSermon}
+        onRejectSermon={onRejectSermon}
+        onSubmitSermonForReview={onSubmitSermonForReview}
+        sermons={sermons}
         user={user}
       />
 
@@ -814,6 +926,59 @@ function PublicNewsSection({ news }: { news: NewsPublication[] }) {
   );
 }
 
+function PublicSermonsSection({ sermons }: { sermons: SermonPublication[] }) {
+  const publishedSermons = sermons.filter((sermon) => sermon.status === "published");
+
+  return (
+    <section className="public-sermons" aria-labelledby="public-sermons-title">
+      <div>
+        <p className="eyebrow">Predicaciones</p>
+        <h2 id="public-sermons-title">Predicaciones publicadas</h2>
+      </div>
+
+      {publishedSermons.length > 0 ? (
+        <div className="news-grid">
+          {publishedSermons.map((sermon) => {
+            const embedUrl = createYouTubeEmbedUrl(sermon.youtubeUrl);
+
+            return (
+              <article
+                className="public-news-card"
+                aria-labelledby={`${sermon.id}-public-title`}
+                key={sermon.id}
+              >
+                <h3 id={`${sermon.id}-public-title`}>{sermon.title}</h3>
+                {embedUrl ? (
+                  <div className="sermon-video">
+                    <iframe
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                      src={embedUrl}
+                      title={`Video de predicacion: ${sermon.title}`}
+                    />
+                  </div>
+                ) : (
+                  <p className="news-image-reference">
+                    URL de YouTube no valida para generar el embed.
+                  </p>
+                )}
+                <p>Predicador: {sermon.preacher}</p>
+                <p>Fecha: {formatSermonDate(sermon.sermonDate)}</p>
+                <p>Serie: {sermon.series}</p>
+                {sermon.description ? (
+                  <p className="news-summary">{sermon.description}</p>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="empty-news-note">Todavia no hay predicaciones publicadas.</p>
+      )}
+    </section>
+  );
+}
+
 type NewsEditorialWorkspaceProps = {
   news: NewsPublication[];
   onApproveNews: (newsId: string) => void;
@@ -842,6 +1007,15 @@ type CampaignEditorialWorkspaceProps = {
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onRejectCampaign: (campaignId: string) => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
+  user: AuthenticatedUser;
+};
+
+type SermonEditorialWorkspaceProps = {
+  sermons: SermonPublication[];
+  onApproveSermon: (sermonId: string) => void;
+  onCreateDraftSermon: (input: SermonDraftInput) => void;
+  onRejectSermon: (sermonId: string) => void;
+  onSubmitSermonForReview: (sermonId: string) => void;
   user: AuthenticatedUser;
 };
 
@@ -1178,6 +1352,178 @@ function CampaignPanelCard({
   );
 }
 
+function SermonEditorialWorkspace({
+  sermons,
+  onApproveSermon,
+  onCreateDraftSermon,
+  onRejectSermon,
+  onSubmitSermonForReview,
+  user
+}: SermonEditorialWorkspaceProps) {
+  const [formValues, setFormValues] = useState<SermonFormValues>(
+    emptySermonFormValues
+  );
+
+  function handleFormChange(field: keyof SermonFormValues, value: string) {
+    setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const input = normalizeSermonFormValues(formValues);
+
+    if (!isCompleteSermonDraft(input)) {
+      return;
+    }
+
+    onCreateDraftSermon(input);
+    setFormValues(emptySermonFormValues);
+  }
+
+  return (
+    <div className="news-workspace">
+      {user.role === "editor" ? (
+        <form className="news-form" onSubmit={handleFormSubmit}>
+          <h4>Nuevo Borrador Predicacion</h4>
+          <label>
+            Titulo de la predicacion
+            <input
+              onChange={(event) => handleFormChange("title", event.target.value)}
+              required
+              type="text"
+              value={formValues.title}
+            />
+          </label>
+          <label>
+            URL de YouTube
+            <input
+              onChange={(event) => handleFormChange("youtubeUrl", event.target.value)}
+              required
+              type="url"
+              value={formValues.youtubeUrl}
+            />
+          </label>
+          <label>
+            Predicador
+            <input
+              onChange={(event) => handleFormChange("preacher", event.target.value)}
+              required
+              type="text"
+              value={formValues.preacher}
+            />
+          </label>
+          <label>
+            Fecha de la predicacion
+            <input
+              onChange={(event) => handleFormChange("sermonDate", event.target.value)}
+              required
+              type="date"
+              value={formValues.sermonDate}
+            />
+          </label>
+          <label>
+            Serie
+            <input
+              onChange={(event) => handleFormChange("series", event.target.value)}
+              required
+              type="text"
+              value={formValues.series}
+            />
+          </label>
+          <label>
+            Descripcion (opcional)
+            <textarea
+              onChange={(event) => handleFormChange("description", event.target.value)}
+              value={formValues.description}
+            />
+          </label>
+          <div className="action-row">
+            <button type="submit">Crear borrador de predicacion</button>
+          </div>
+        </form>
+      ) : null}
+
+      <section className="news-review-panel" aria-labelledby="sermon-review-title">
+        <h4 id="sermon-review-title">
+          {user.role === "admin"
+            ? "Revision de Predicaciones"
+            : "Predicaciones en preparacion"}
+        </h4>
+        {sermons.length > 0 ? (
+          <div className="news-list">
+            {sermons.map((sermon) => (
+              <SermonPanelCard
+                key={sermon.id}
+                onApproveSermon={onApproveSermon}
+                onRejectSermon={onRejectSermon}
+                onSubmitForReview={onSubmitSermonForReview}
+                sermon={sermon}
+                user={user}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-news-note">Aun no hay Predicaciones en el panel.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+type SermonPanelCardProps = {
+  sermon: SermonPublication;
+  onApproveSermon: (sermonId: string) => void;
+  onRejectSermon: (sermonId: string) => void;
+  onSubmitForReview: (sermonId: string) => void;
+  user: AuthenticatedUser;
+};
+
+function SermonPanelCard({
+  sermon,
+  onApproveSermon,
+  onRejectSermon,
+  onSubmitForReview,
+  user
+}: SermonPanelCardProps) {
+  const titleId = `${sermon.id}-panel-title`;
+
+  return (
+    <article className="news-panel-card" aria-labelledby={titleId}>
+      <div className="news-card-header">
+        <span className={`status-badge status-${sermon.status}`}>
+          {publicationStatusLabels[sermon.status]}
+        </span>
+        <h5 id={titleId}>{sermon.title}</h5>
+      </div>
+      <p className="news-image-reference">YouTube: {sermon.youtubeUrl}</p>
+      <p>Predicador: {sermon.preacher}</p>
+      <p>Fecha: {formatSermonDate(sermon.sermonDate)}</p>
+      <p>Serie: {sermon.series}</p>
+      {sermon.description ? <p className="news-summary">{sermon.description}</p> : null}
+
+      {user.role === "editor" && sermon.status === "draft" ? (
+        <div className="action-row">
+          <button onClick={() => onSubmitForReview(sermon.id)} type="button">
+            Enviar predicacion a revision
+          </button>
+        </div>
+      ) : null}
+
+      {user.role === "admin" && sermon.status === "pending_review" ? (
+        <div className="action-row">
+          <button onClick={() => onApproveSermon(sermon.id)} type="button">
+            Aprobar predicacion
+          </button>
+          <button onClick={() => onRejectSermon(sermon.id)} type="button">
+            Rechazar predicacion
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function NewsEditorialWorkspace({
   news,
   onApproveNews,
@@ -1456,6 +1802,10 @@ function createEventId(currentEvents: EventPublication[]) {
   return `evento-${currentEvents.length + 1}`;
 }
 
+function createSermonId(currentSermons: SermonPublication[]) {
+  return `predicacion-${currentSermons.length + 1}`;
+}
+
 function normalizeCampaignFormValues(values: CampaignFormValues): CampaignDraftInput {
   const videoUrl = values.videoUrl.trim();
 
@@ -1500,6 +1850,29 @@ function isCompleteEventDraft(input: EventDraftInput) {
   );
 }
 
+function normalizeSermonFormValues(values: SermonFormValues): SermonDraftInput {
+  const description = values.description.trim();
+
+  return {
+    title: values.title.trim(),
+    youtubeUrl: values.youtubeUrl.trim(),
+    preacher: values.preacher.trim(),
+    sermonDate: values.sermonDate.trim(),
+    series: values.series.trim(),
+    description: description || undefined
+  };
+}
+
+function isCompleteSermonDraft(input: SermonDraftInput) {
+  return (
+    input.title.length > 0 &&
+    createYouTubeEmbedUrl(input.youtubeUrl) !== null &&
+    input.preacher.length > 0 &&
+    input.sermonDate.length > 0 &&
+    input.series.length > 0
+  );
+}
+
 function hasEventEnded(eventItem: EventPublication, now: Date) {
   const startsAtTime = new Date(eventItem.startsAt).getTime();
 
@@ -1516,6 +1889,49 @@ function compareEventsDescending(first: EventPublication, second: EventPublicati
 
 function formatEventStartsAt(startsAt: string) {
   return startsAt.replace("T", " ");
+}
+
+function formatSermonDate(sermonDate: string) {
+  return sermonDate;
+}
+
+function createYouTubeEmbedUrl(youtubeUrl: string) {
+  const videoId = getYouTubeVideoId(youtubeUrl);
+
+  return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : null;
+}
+
+function getYouTubeVideoId(youtubeUrl: string) {
+  try {
+    const url = new URL(youtubeUrl);
+    const hostname = url.hostname.replace(/^www\./, "");
+
+    if (hostname === "youtu.be") {
+      return sanitizeYouTubeVideoId(url.pathname.split("/")[1]);
+    }
+
+    if (
+      hostname === "youtube.com" ||
+      hostname === "m.youtube.com" ||
+      hostname === "youtube-nocookie.com"
+    ) {
+      if (url.pathname === "/watch") {
+        return sanitizeYouTubeVideoId(url.searchParams.get("v"));
+      }
+
+      const pathVideoId = url.pathname.match(/^\/(embed|shorts)\/([^/]+)/)?.[2];
+
+      return sanitizeYouTubeVideoId(pathVideoId);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function sanitizeYouTubeVideoId(videoId: string | null | undefined) {
+  return videoId && /^[A-Za-z0-9_-]{11}$/.test(videoId) ? videoId : null;
 }
 
 function normalizeNewsFormValues(values: NewsFormValues): NewsDraftInput {
