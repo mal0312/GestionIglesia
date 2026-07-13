@@ -19,6 +19,7 @@ export const siteContent: SiteContent = {
     noReceiptStorageNotice:
       "El sitio no registra ni guarda comprobantes de pago en el MVP."
   },
+  events: [],
   futureSections: [
     {
       title: "Eventos",

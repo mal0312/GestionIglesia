@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AuthConfig, GoogleAuthClient } from "./domain/auth";
-import type { NewsPublication, SiteContent } from "./domain/siteContent";
+import type { EventPublication, NewsPublication, SiteContent } from "./domain/siteContent";
 
 const content: SiteContent = {
   churchName: "Iglesia del Test",
@@ -18,6 +18,7 @@ const content: SiteContent = {
     noReceiptStorageNotice:
       "El sitio no registra ni guarda comprobantes de pago en el MVP."
   },
+  events: [],
   futureSections: [
     { title: "Eventos", description: "Actividades proximas." },
     { title: "Campanas", description: "Iniciativas y necesidades." },
@@ -204,6 +205,235 @@ describe("private panel authentication and roles", () => {
       await within(panel).findByText(/Sesion activa: editora@example.com/)
     ).toBeInTheDocument();
     expect(within(panel).getByText("Rol: Editor")).toBeInTheDocument();
+  });
+});
+
+describe("Evento editorial flow", () => {
+  const now = new Date("2026-07-12T12:00:00");
+  const events: EventPublication[] = [
+    {
+      id: "evento-1",
+      title: "Conferencia de familias",
+      description: "Una actividad abierta para fortalecer los hogares.",
+      startsAt: "2026-07-20T18:00",
+      location: "Salon principal",
+      organizer: "Ministerio de Familias",
+      flyerReference: "familias.png",
+      status: "published"
+    },
+    {
+      id: "evento-2",
+      title: "Retiro pasado",
+      description: "Un encuentro que ya finalizo.",
+      startsAt: "2026-06-01T09:00",
+      location: "Quinta Betania",
+      organizer: "Equipo pastoral",
+      status: "published"
+    },
+    {
+      id: "evento-3",
+      title: "Borrador oculto",
+      description: "Todavia no fue enviado.",
+      startsAt: "2026-07-22T19:00",
+      location: "Aula 1",
+      organizer: "Editor",
+      status: "draft"
+    },
+    {
+      id: "evento-4",
+      title: "Pendiente oculto",
+      description: "Espera aprobacion.",
+      startsAt: "2026-07-23T19:00",
+      location: "Aula 2",
+      organizer: "Editor",
+      status: "pending_review"
+    },
+    {
+      id: "evento-5",
+      title: "Rechazado oculto",
+      description: "No debe publicarse.",
+      startsAt: "2026-07-24T19:00",
+      location: "Aula 3",
+      organizer: "Editor",
+      status: "rejected"
+    }
+  ];
+
+  it("shows only published upcoming Eventos publicly and moves ended Eventos to the archive", () => {
+    render(<App content={{ ...content, events }} now={now} />);
+
+    const upcomingEvents = screen.getByRole("region", { name: "Eventos proximos" });
+    const archivedEvents = screen.getByRole("region", { name: "Archivo de Eventos" });
+
+    const upcomingCard = within(upcomingEvents).getByRole("article", {
+      name: "Conferencia de familias"
+    });
+    expect(
+      within(upcomingCard).getByText("Una actividad abierta para fortalecer los hogares.")
+    ).toBeInTheDocument();
+    expect(within(upcomingCard).getByText("Fecha y hora: 2026-07-20 18:00"))
+      .toBeInTheDocument();
+    expect(within(upcomingCard).getByText("Lugar: Salon principal")).toBeInTheDocument();
+    expect(
+      within(upcomingCard).getByText("Organiza: Ministerio de Familias")
+    ).toBeInTheDocument();
+    expect(within(upcomingCard).getByText("Flyer: familias.png")).toBeInTheDocument();
+
+    expect(within(upcomingEvents).queryByText("Retiro pasado")).not.toBeInTheDocument();
+    expect(within(upcomingEvents).queryByText("Borrador oculto")).not.toBeInTheDocument();
+    expect(within(upcomingEvents).queryByText("Pendiente oculto")).not.toBeInTheDocument();
+    expect(within(upcomingEvents).queryByText("Rechazado oculto")).not.toBeInTheDocument();
+
+    expect(
+      within(archivedEvents).getByRole("article", { name: "Retiro pasado" })
+    ).toBeInTheDocument();
+    expect(within(archivedEvents).queryByText("Conferencia de familias"))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText(/inscripcion|cupo|asistencia/i)).not.toBeInTheDocument();
+  });
+
+  it("lets an Editor create and submit an Evento draft for review", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+        now={now}
+      />
+    );
+
+    const publicEvents = screen.getByRole("region", { name: "Eventos proximos" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo del evento"), {
+      target: { value: "Noche de adoracion" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion del evento"), {
+      target: { value: "Una reunion abierta de alabanza y oracion." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha y hora de inicio"), {
+      target: { value: "2026-07-21T20:00" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Lugar"), {
+      target: { value: "Templo principal" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Organizador"), {
+      target: { value: "Equipo de alabanza" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Referencia de flyer (opcional)"), {
+      target: { value: "adoracion.jpg" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador de evento" }));
+
+    const eventCard = within(panel).getByRole("article", { name: "Noche de adoracion" });
+    expect(within(eventCard).getByText("Borrador")).toBeInTheDocument();
+    expect(within(eventCard).getByText("Fecha y hora: 2026-07-21 20:00"))
+      .toBeInTheDocument();
+    expect(within(eventCard).getByText("Lugar: Templo principal")).toBeInTheDocument();
+    expect(within(eventCard).getByText("Organiza: Equipo de alabanza"))
+      .toBeInTheDocument();
+    expect(within(eventCard).getByText("Flyer: adoracion.jpg")).toBeInTheDocument();
+    expect(within(publicEvents).queryByText("Noche de adoracion")).not.toBeInTheDocument();
+
+    fireEvent.click(within(eventCard).getByRole("button", { name: "Enviar evento a revision" }));
+
+    expect(within(eventCard).getByText("Pendiente de revision")).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Aprobar evento" }))
+      .not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Rechazar evento" }))
+      .not.toBeInTheDocument();
+    expect(within(publicEvents).queryByText("Noche de adoracion")).not.toBeInTheDocument();
+  });
+
+  it("lets an Administrador approve or reject pending Eventos and controls public visibility", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+        now={now}
+      />
+    );
+
+    const publicEvents = screen.getByRole("region", { name: "Eventos proximos" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo del evento"), {
+      target: { value: "Conferencia evangelistica" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion del evento"), {
+      target: { value: "Encuentro abierto para la comunidad." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha y hora de inicio"), {
+      target: { value: "2026-07-25T19:00" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Lugar"), {
+      target: { value: "Plaza central" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Organizador"), {
+      target: { value: "Evangelismo" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador de evento" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar evento a revision" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo del evento"), {
+      target: { value: "Evento interno" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Descripcion del evento"), {
+      target: { value: "No debe quedar publico." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha y hora de inicio"), {
+      target: { value: "2026-07-26T19:00" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Lugar"), {
+      target: { value: "Oficina" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Organizador"), {
+      target: { value: "Administracion" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador de evento" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar evento a revision" }));
+
+    expect(within(publicEvents).queryByText("Conferencia evangelistica"))
+      .not.toBeInTheDocument();
+    expect(within(publicEvents).queryByText("Evento interno")).not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", {
+      name: "Conferencia evangelistica"
+    });
+    fireEvent.click(within(approvedCard).getByRole("button", { name: "Aprobar evento" }));
+
+    const rejectedCard = within(panel).getByRole("article", { name: "Evento interno" });
+    fireEvent.click(within(rejectedCard).getByRole("button", { name: "Rechazar evento" }));
+
+    expect(within(approvedCard).getByText("Publicado")).toBeInTheDocument();
+    expect(within(rejectedCard).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(publicEvents).getByText("Conferencia evangelistica")).toBeInTheDocument();
+    expect(within(publicEvents).queryByText("Evento interno")).not.toBeInTheDocument();
   });
 });
 

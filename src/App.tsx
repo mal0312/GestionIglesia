@@ -1,5 +1,11 @@
 import { type FormEvent, useState } from "react";
-import type { NewsDraftVersion, NewsPublication, SiteContent } from "./domain/siteContent";
+import type {
+  EventPublication,
+  NewsDraftVersion,
+  NewsPublication,
+  PublicationStatus,
+  SiteContent
+} from "./domain/siteContent";
 import type {
   AuthConfig,
   AuthenticatedUser,
@@ -16,6 +22,7 @@ type AppProps = {
   content?: SiteContent;
   authConfig?: AuthConfig;
   googleAuthClient?: GoogleAuthClient;
+  now?: Date;
 };
 
 type AuthStatus = "idle" | "loading";
@@ -34,6 +41,24 @@ type NewsFormValues = {
   imageReference: string;
 };
 
+type EventDraftInput = {
+  title: string;
+  description: string;
+  startsAt: string;
+  location: string;
+  organizer: string;
+  flyerReference?: string;
+};
+
+type EventFormValues = {
+  title: string;
+  description: string;
+  startsAt: string;
+  location: string;
+  organizer: string;
+  flyerReference: string;
+};
+
 const emptyNewsFormValues: NewsFormValues = {
   title: "",
   summary: "",
@@ -41,7 +66,16 @@ const emptyNewsFormValues: NewsFormValues = {
   imageReference: ""
 };
 
-const newsStatusLabels: Record<NewsPublication["status"], string> = {
+const emptyEventFormValues: EventFormValues = {
+  title: "",
+  description: "",
+  startsAt: "",
+  location: "",
+  organizer: "",
+  flyerReference: ""
+};
+
+const publicationStatusLabels: Record<PublicationStatus, string> = {
   draft: "Borrador",
   pending_review: "Pendiente de revision",
   published: "Publicado",
@@ -61,12 +95,14 @@ const finalAuthorityActions: Array<{
 export function App({
   content = siteContent,
   authConfig = privatePanelAuthConfig,
-  googleAuthClient = browserGoogleAuthClient
+  googleAuthClient = browserGoogleAuthClient,
+  now = new Date()
 }: AppProps) {
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("idle");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [news, setNews] = useState<NewsPublication[]>(() => content.news);
+  const [events, setEvents] = useState<EventPublication[]>(() => content.events);
 
   async function handleGoogleSignIn() {
     setAuthStatus("loading");
@@ -193,6 +229,47 @@ export function App({
     );
   }
 
+  function handleCreateDraftEvent(input: EventDraftInput) {
+    setEvents((currentEvents) => [
+      ...currentEvents,
+      {
+        ...input,
+        id: createEventId(currentEvents),
+        status: "draft"
+      }
+    ]);
+  }
+
+  function handleSubmitEventForReview(eventId: string) {
+    setEvents((currentEvents) =>
+      currentEvents.map((eventItem) =>
+        eventItem.id === eventId && eventItem.status === "draft"
+          ? { ...eventItem, status: "pending_review" }
+          : eventItem
+      )
+    );
+  }
+
+  function handleApproveEvent(eventId: string) {
+    setEvents((currentEvents) =>
+      currentEvents.map((eventItem) =>
+        eventItem.id === eventId && eventItem.status === "pending_review"
+          ? { ...eventItem, status: "published" }
+          : eventItem
+      )
+    );
+  }
+
+  function handleRejectEvent(eventId: string) {
+    setEvents((currentEvents) =>
+      currentEvents.map((eventItem) =>
+        eventItem.id === eventId && eventItem.status === "pending_review"
+          ? { ...eventItem, status: "rejected" }
+          : eventItem
+      )
+    );
+  }
+
   return (
     <main className="site-shell">
       <section className="hero" aria-labelledby="home-title">
@@ -216,6 +293,8 @@ export function App({
           ))}
         </div>
       </section>
+
+      <PublicEventsSection events={events} now={now} />
 
       <PublicNewsSection news={news} />
 
@@ -244,15 +323,20 @@ export function App({
         authMessage={authMessage}
         authStatus={authStatus}
         currentUser={currentUser}
+        events={events}
         news={news}
+        onApproveEvent={handleApproveEvent}
         onApproveNews={handleApproveNews}
         onApproveRevision={handleApproveRevision}
+        onCreateDraftEvent={handleCreateDraftEvent}
         onCreateDraftNews={handleCreateDraftNews}
         onGoogleSignIn={handleGoogleSignIn}
         onProposeRevision={handleProposeRevision}
+        onRejectEvent={handleRejectEvent}
         onRejectNews={handleRejectNews}
         onRejectRevision={handleRejectRevision}
         onSignOut={handleSignOut}
+        onSubmitEventForReview={handleSubmitEventForReview}
         onSubmitNewsForReview={handleSubmitNewsForReview}
         onUpdateDraftNews={handleUpdateDraftNews}
       />
@@ -266,15 +350,20 @@ type PrivatePanelProps = {
   authMessage: string | null;
   authStatus: AuthStatus;
   currentUser: AuthenticatedUser | null;
+  events: EventPublication[];
   news: NewsPublication[];
+  onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
+  onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onGoogleSignIn: () => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
+  onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
   onSignOut: () => void;
+  onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
 };
@@ -283,15 +372,20 @@ function PrivatePanel({
   authMessage,
   authStatus,
   currentUser,
+  events,
   news,
+  onApproveEvent,
   onApproveNews,
   onApproveRevision,
+  onCreateDraftEvent,
   onCreateDraftNews,
   onGoogleSignIn,
   onProposeRevision,
+  onRejectEvent,
   onRejectNews,
   onRejectRevision,
   onSignOut,
+  onSubmitEventForReview,
   onSubmitNewsForReview,
   onUpdateDraftNews
 }: PrivatePanelProps) {
@@ -332,13 +426,18 @@ function PrivatePanel({
 
       {currentUser ? (
         <RoleStartSurface
+          events={events}
           news={news}
+          onApproveEvent={onApproveEvent}
           onApproveNews={onApproveNews}
           onApproveRevision={onApproveRevision}
+          onCreateDraftEvent={onCreateDraftEvent}
           onCreateDraftNews={onCreateDraftNews}
           onProposeRevision={onProposeRevision}
+          onRejectEvent={onRejectEvent}
           onRejectNews={onRejectNews}
           onRejectRevision={onRejectRevision}
+          onSubmitEventForReview={onSubmitEventForReview}
           onSubmitNewsForReview={onSubmitNewsForReview}
           onUpdateDraftNews={onUpdateDraftNews}
           user={currentUser}
@@ -361,26 +460,36 @@ function AuthGuardrails() {
 }
 
 type RoleStartSurfaceProps = {
+  events: EventPublication[];
   news: NewsPublication[];
+  onApproveEvent: (eventId: string) => void;
   onApproveNews: (newsId: string) => void;
   onApproveRevision: (newsId: string) => void;
+  onCreateDraftEvent: (input: EventDraftInput) => void;
   onCreateDraftNews: (input: NewsDraftInput) => void;
   onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
+  onRejectEvent: (eventId: string) => void;
   onRejectNews: (newsId: string) => void;
   onRejectRevision: (newsId: string) => void;
+  onSubmitEventForReview: (eventId: string) => void;
   onSubmitNewsForReview: (newsId: string) => void;
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
   user: AuthenticatedUser;
 };
 
 function RoleStartSurface({
+  events,
   news,
+  onApproveEvent,
   onApproveNews,
   onApproveRevision,
+  onCreateDraftEvent,
   onCreateDraftNews,
   onProposeRevision,
+  onRejectEvent,
   onRejectNews,
   onRejectRevision,
+  onSubmitEventForReview,
   onSubmitNewsForReview,
   onUpdateDraftNews,
   user
@@ -410,6 +519,7 @@ function RoleStartSurface({
           <h4>Preparacion permitida</h4>
           <div className="action-row">
             <button type="button">Usar formulario de Noticia</button>
+            <button type="button">Usar formulario de Evento</button>
             <button type="button">Editar pendientes</button>
             <button type="button">Gestionar embeds sociales</button>
           </div>
@@ -433,6 +543,15 @@ function RoleStartSurface({
         )}
       </div>
 
+      <EventEditorialWorkspace
+        events={events}
+        onApproveEvent={onApproveEvent}
+        onCreateDraftEvent={onCreateDraftEvent}
+        onRejectEvent={onRejectEvent}
+        onSubmitEventForReview={onSubmitEventForReview}
+        user={user}
+      />
+
       <NewsEditorialWorkspace
         news={news}
         onApproveNews={onApproveNews}
@@ -446,6 +565,66 @@ function RoleStartSurface({
         user={user}
       />
     </div>
+  );
+}
+
+function PublicEventsSection({ events, now }: { events: EventPublication[]; now: Date }) {
+  const publishedEvents = events.filter((eventItem) => eventItem.status === "published");
+  const upcomingEvents = publishedEvents
+    .filter((eventItem) => !hasEventEnded(eventItem, now))
+    .sort(compareEventsAscending);
+  const archivedEvents = publishedEvents
+    .filter((eventItem) => hasEventEnded(eventItem, now))
+    .sort(compareEventsDescending);
+
+  return (
+    <section className="public-events" aria-labelledby="public-events-title">
+      <div>
+        <p className="eyebrow">Actividades</p>
+        <h2 id="public-events-title">Eventos publicados</h2>
+      </div>
+
+      <section aria-labelledby="upcoming-events-title">
+        <h3 id="upcoming-events-title">Eventos proximos</h3>
+        {upcomingEvents.length > 0 ? (
+          <div className="news-grid">
+            {upcomingEvents.map((eventItem) => (
+              <PublicEventCard eventItem={eventItem} key={eventItem.id} />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-news-note">Todavia no hay eventos proximos publicados.</p>
+        )}
+      </section>
+
+      <section aria-labelledby="archived-events-title">
+        <h3 id="archived-events-title">Archivo de Eventos</h3>
+        {archivedEvents.length > 0 ? (
+          <div className="news-grid">
+            {archivedEvents.map((eventItem) => (
+              <PublicEventCard eventItem={eventItem} key={eventItem.id} />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-news-note">Todavia no hay eventos anteriores publicados.</p>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function PublicEventCard({ eventItem }: { eventItem: EventPublication }) {
+  return (
+    <article className="public-news-card" aria-labelledby={`${eventItem.id}-public-title`}>
+      <h3 id={`${eventItem.id}-public-title`}>{eventItem.title}</h3>
+      <p className="news-summary">{eventItem.description}</p>
+      <p>Fecha y hora: {formatEventStartsAt(eventItem.startsAt)}</p>
+      <p>Lugar: {eventItem.location}</p>
+      <p>Organiza: {eventItem.organizer}</p>
+      {eventItem.flyerReference ? (
+        <p className="news-image-reference">Flyer: {eventItem.flyerReference}</p>
+      ) : null}
+    </article>
   );
 }
 
@@ -495,6 +674,185 @@ type NewsEditorialWorkspaceProps = {
   onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
   user: AuthenticatedUser;
 };
+
+type EventEditorialWorkspaceProps = {
+  events: EventPublication[];
+  onApproveEvent: (eventId: string) => void;
+  onCreateDraftEvent: (input: EventDraftInput) => void;
+  onRejectEvent: (eventId: string) => void;
+  onSubmitEventForReview: (eventId: string) => void;
+  user: AuthenticatedUser;
+};
+
+function EventEditorialWorkspace({
+  events,
+  onApproveEvent,
+  onCreateDraftEvent,
+  onRejectEvent,
+  onSubmitEventForReview,
+  user
+}: EventEditorialWorkspaceProps) {
+  const [formValues, setFormValues] = useState<EventFormValues>(emptyEventFormValues);
+
+  function handleFormChange(field: keyof EventFormValues, value: string) {
+    setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const input = normalizeEventFormValues(formValues);
+
+    if (!isCompleteEventDraft(input)) {
+      return;
+    }
+
+    onCreateDraftEvent(input);
+    setFormValues(emptyEventFormValues);
+  }
+
+  return (
+    <div className="news-workspace">
+      {user.role === "editor" ? (
+        <form className="news-form" onSubmit={handleFormSubmit}>
+          <h4>Nuevo Borrador Evento</h4>
+          <label>
+            Titulo del evento
+            <input
+              onChange={(event) => handleFormChange("title", event.target.value)}
+              required
+              type="text"
+              value={formValues.title}
+            />
+          </label>
+          <label>
+            Descripcion del evento
+            <textarea
+              onChange={(event) => handleFormChange("description", event.target.value)}
+              required
+              value={formValues.description}
+            />
+          </label>
+          <label>
+            Fecha y hora de inicio
+            <input
+              onChange={(event) => handleFormChange("startsAt", event.target.value)}
+              required
+              type="datetime-local"
+              value={formValues.startsAt}
+            />
+          </label>
+          <label>
+            Lugar
+            <input
+              onChange={(event) => handleFormChange("location", event.target.value)}
+              required
+              type="text"
+              value={formValues.location}
+            />
+          </label>
+          <label>
+            Organizador
+            <input
+              onChange={(event) => handleFormChange("organizer", event.target.value)}
+              required
+              type="text"
+              value={formValues.organizer}
+            />
+          </label>
+          <label>
+            Referencia de flyer (opcional)
+            <input
+              onChange={(event) => handleFormChange("flyerReference", event.target.value)}
+              type="text"
+              value={formValues.flyerReference}
+            />
+          </label>
+          <div className="action-row">
+            <button type="submit">Crear borrador de evento</button>
+          </div>
+        </form>
+      ) : null}
+
+      <section className="news-review-panel" aria-labelledby="event-review-title">
+        <h4 id="event-review-title">
+          {user.role === "admin" ? "Revision de Eventos" : "Eventos en preparacion"}
+        </h4>
+        {events.length > 0 ? (
+          <div className="news-list">
+            {events.map((eventItem) => (
+              <EventPanelCard
+                eventItem={eventItem}
+                key={eventItem.id}
+                onApproveEvent={onApproveEvent}
+                onRejectEvent={onRejectEvent}
+                onSubmitForReview={onSubmitEventForReview}
+                user={user}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-news-note">Aun no hay Eventos en el panel.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+type EventPanelCardProps = {
+  eventItem: EventPublication;
+  onApproveEvent: (eventId: string) => void;
+  onRejectEvent: (eventId: string) => void;
+  onSubmitForReview: (eventId: string) => void;
+  user: AuthenticatedUser;
+};
+
+function EventPanelCard({
+  eventItem,
+  onApproveEvent,
+  onRejectEvent,
+  onSubmitForReview,
+  user
+}: EventPanelCardProps) {
+  const titleId = `${eventItem.id}-panel-title`;
+
+  return (
+    <article className="news-panel-card" aria-labelledby={titleId}>
+      <div className="news-card-header">
+        <span className={`status-badge status-${eventItem.status}`}>
+          {publicationStatusLabels[eventItem.status]}
+        </span>
+        <h5 id={titleId}>{eventItem.title}</h5>
+      </div>
+      <p className="news-summary">{eventItem.description}</p>
+      <p>Fecha y hora: {formatEventStartsAt(eventItem.startsAt)}</p>
+      <p>Lugar: {eventItem.location}</p>
+      <p>Organiza: {eventItem.organizer}</p>
+      {eventItem.flyerReference ? (
+        <p className="news-image-reference">Flyer: {eventItem.flyerReference}</p>
+      ) : null}
+
+      {user.role === "editor" && eventItem.status === "draft" ? (
+        <div className="action-row">
+          <button onClick={() => onSubmitForReview(eventItem.id)} type="button">
+            Enviar evento a revision
+          </button>
+        </div>
+      ) : null}
+
+      {user.role === "admin" && eventItem.status === "pending_review" ? (
+        <div className="action-row">
+          <button onClick={() => onApproveEvent(eventItem.id)} type="button">
+            Aprobar evento
+          </button>
+          <button onClick={() => onRejectEvent(eventItem.id)} type="button">
+            Rechazar evento
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
 
 function NewsEditorialWorkspace({
   news,
@@ -692,7 +1050,7 @@ function NewsPanelCard({
     <article className="news-panel-card" aria-labelledby={titleId}>
       <div className="news-card-header">
         <span className={`status-badge status-${newsItem.status}`}>
-          {newsStatusLabels[newsItem.status]}
+          {publicationStatusLabels[newsItem.status]}
         </span>
         <h5 id={titleId}>{newsItem.title}</h5>
       </div>
@@ -764,6 +1122,51 @@ function NewsPanelCard({
 
 function createNewsId(currentNews: NewsPublication[]) {
   return `noticia-${currentNews.length + 1}`;
+}
+
+function createEventId(currentEvents: EventPublication[]) {
+  return `evento-${currentEvents.length + 1}`;
+}
+
+function normalizeEventFormValues(values: EventFormValues): EventDraftInput {
+  const flyerReference = values.flyerReference.trim();
+
+  return {
+    title: values.title.trim(),
+    description: values.description.trim(),
+    startsAt: values.startsAt.trim(),
+    location: values.location.trim(),
+    organizer: values.organizer.trim(),
+    flyerReference: flyerReference || undefined
+  };
+}
+
+function isCompleteEventDraft(input: EventDraftInput) {
+  return (
+    input.title.length > 0 &&
+    input.description.length > 0 &&
+    input.startsAt.length > 0 &&
+    input.location.length > 0 &&
+    input.organizer.length > 0
+  );
+}
+
+function hasEventEnded(eventItem: EventPublication, now: Date) {
+  const startsAtTime = new Date(eventItem.startsAt).getTime();
+
+  return !Number.isNaN(startsAtTime) && startsAtTime < now.getTime();
+}
+
+function compareEventsAscending(first: EventPublication, second: EventPublication) {
+  return new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime();
+}
+
+function compareEventsDescending(first: EventPublication, second: EventPublication) {
+  return compareEventsAscending(second, first);
+}
+
+function formatEventStartsAt(startsAt: string) {
+  return startsAt.replace("T", " ");
 }
 
 function normalizeNewsFormValues(values: NewsFormValues): NewsDraftInput {

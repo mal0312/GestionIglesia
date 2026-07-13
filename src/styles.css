@@ -26,6 +26,7 @@ body {
 
 .hero,
 .future-sections,
+.public-events,
 .public-news,
 .donation,
 .private-panel,
@@ -95,7 +96,15 @@ h1 {
   padding: clamp(24px, 5vw, 44px);
 }
 
+.public-events {
+  display: grid;
+  gap: 24px;
+  margin-top: 24px;
+  padding: clamp(24px, 5vw, 44px);
+}
+
 .future-sections h2,
+.public-events h2,
 .public-news h2,
 .donation h2,
 .private-panel h2 {
@@ -124,6 +133,7 @@ h1 {
 }
 
 .section-card p,
+.public-events p,
 .public-news p,
 .donation p,
 .guardrails,
