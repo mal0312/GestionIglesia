@@ -2356,7 +2356,7 @@ function getYouTubeVideoId(youtubeUrl: string) {
         return sanitizeYouTubeVideoId(url.searchParams.get("v"));
       }
 
-      const pathVideoId = url.pathname.match(/^\/(embed|shorts)\/([^/]+)/)?.[2];
+      const pathVideoId = url.pathname.match(/^\/(embed|shorts|live)\/([^/]+)/)?.[2];
 
       return sanitizeYouTubeVideoId(pathVideoId);
     }

@@ -825,6 +825,52 @@ describe("Predicacion editorial flow", () => {
       .not.toBeInTheDocument();
   });
 
+  it("lets an Editor create a Predicacion draft from a YouTube Live URL", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la predicacion"), {
+      target: { value: "Culto en vivo" }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL de YouTube"), {
+      target: { value: "https://www.youtube.com/live/live789RST0?feature=shared" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Predicador"), {
+      target: { value: "Pastor Mateo" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Fecha de la predicacion"), {
+      target: { value: "2026-07-19" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Serie"), {
+      target: { value: "Cultos" }
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Crear borrador de predicacion" })
+    );
+
+    const sermonCard = within(panel).getByRole("article", { name: "Culto en vivo" });
+
+    expect(within(sermonCard).getByText("Borrador")).toBeInTheDocument();
+    expect(
+      within(sermonCard).getByText(
+        "YouTube: https://www.youtube.com/live/live789RST0?feature=shared"
+      )
+    ).toBeInTheDocument();
+  });
+
   it("lets an Administrador approve or reject pending Predicaciones and controls public visibility", async () => {
     render(
       <App
