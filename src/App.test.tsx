@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AuthConfig, GoogleAuthClient } from "./domain/auth";
@@ -99,6 +99,266 @@ describe("public home", () => {
       within(donation).getByRole("img", { name: content.donation.qrAltText })
     ).toHaveAttribute("src", content.donation.qrImageUrl);
     expect(screen.getByText(content.costNote)).toBeInTheDocument();
+  });
+});
+
+describe("public Contacto and Donacion de mercaderia forms", () => {
+  it("lets a Visitante submit a Contacto request and receive success feedback", async () => {
+    const publicEmailService = {
+      send: vi.fn(async (_request: unknown) => {})
+    };
+
+    render(<App content={content} publicEmailService={publicEmailService} />);
+
+    const contactForm = screen.getByRole("form", { name: "Contacto" });
+
+    fireEvent.change(within(contactForm).getByLabelText("Nombre y apellido"), {
+      target: { value: "Ana Visitante" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Email o telefono"), {
+      target: { value: "ana@example.com" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Asunto"), {
+      target: { value: "Consulta general" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Mensaje"), {
+      target: { value: "Quisiera conocer los horarios de reunion." }
+    });
+    fireEvent.click(within(contactForm).getByRole("button", { name: "Enviar contacto" }));
+
+    expect(await within(contactForm).findByRole("status")).toHaveTextContent(
+      "Tu mensaje fue enviado. La iglesia respondera por el contacto indicado."
+    );
+    expect(publicEmailService.send).toHaveBeenCalledWith({
+      kind: "contact",
+      name: "Ana Visitante",
+      contact: "ana@example.com",
+      subject: "Consulta general",
+      message: "Quisiera conocer los horarios de reunion."
+    });
+  });
+
+  it("lets a Visitante submit a Donacion de mercaderia request through the same public email service", async () => {
+    const publicEmailService = {
+      send: vi.fn(async (_request: unknown) => {})
+    };
+
+    render(<App content={content} publicEmailService={publicEmailService} />);
+
+    const donationForm = screen.getByRole("form", {
+      name: "Donacion de mercaderia"
+    });
+
+    fireEvent.change(within(donationForm).getByLabelText("Nombre y apellido"), {
+      target: { value: "Carlos Donante" }
+    });
+    fireEvent.change(within(donationForm).getByLabelText("Email o telefono"), {
+      target: { value: "555-0101" }
+    });
+    fireEvent.change(within(donationForm).getByLabelText("Descripcion de mercaderia"), {
+      target: { value: "10 paquetes de arroz y 5 litros de aceite" }
+    });
+    fireEvent.change(within(donationForm).getByLabelText("Mensaje opcional"), {
+      target: { value: "Puedo acercarlo el sabado por la tarde." }
+    });
+    fireEvent.click(
+      within(donationForm).getByRole("button", {
+        name: "Enviar donacion de mercaderia"
+      })
+    );
+
+    expect(await within(donationForm).findByRole("status")).toHaveTextContent(
+      "Tu ofrecimiento de mercaderia fue enviado. La iglesia respondera por el contacto indicado."
+    );
+    expect(publicEmailService.send).toHaveBeenCalledWith({
+      kind: "goods_donation",
+      name: "Carlos Donante",
+      contact: "555-0101",
+      goodsDescription: "10 paquetes de arroz y 5 litros de aceite",
+      message: "Puedo acercarlo el sabado por la tarde."
+    });
+  });
+
+  it("shows clear error feedback when the public email endpoint fails", async () => {
+    const publicEmailService = {
+      send: vi.fn(async (_request: unknown) => {
+        throw new Error("Endpoint unavailable");
+      })
+    };
+
+    render(<App content={content} publicEmailService={publicEmailService} />);
+
+    const contactForm = screen.getByRole("form", { name: "Contacto" });
+
+    fireEvent.change(within(contactForm).getByLabelText("Nombre y apellido"), {
+      target: { value: "Ana Visitante" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Email o telefono"), {
+      target: { value: "ana@example.com" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Asunto"), {
+      target: { value: "Consulta general" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Mensaje"), {
+      target: { value: "Quisiera conocer los horarios de reunion." }
+    });
+    fireEvent.click(within(contactForm).getByRole("button", { name: "Enviar contacto" }));
+
+    expect(await within(contactForm).findByRole("alert")).toHaveTextContent(
+      "No pudimos enviar la solicitud. Intenta de nuevo o usa otro canal de contacto."
+    );
+    expect(
+      within(contactForm).queryByText(
+        "Tu mensaje fue enviado. La iglesia respondera por el contacto indicado."
+      )
+    ).not.toBeInTheDocument();
+  });
+
+  it("rejects likely bot submissions when the honeypot field is filled", async () => {
+    const publicEmailService = {
+      send: vi.fn(async (_request: unknown) => {})
+    };
+
+    render(<App content={content} publicEmailService={publicEmailService} />);
+
+    const contactForm = screen.getByRole("form", { name: "Contacto" });
+    const honeypot = contactForm.querySelector<HTMLInputElement>('input[name="website"]');
+
+    fireEvent.change(within(contactForm).getByLabelText("Nombre y apellido"), {
+      target: { value: "Bot Sospechoso" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Email o telefono"), {
+      target: { value: "bot@example.com" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Asunto"), {
+      target: { value: "Spam" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Mensaje"), {
+      target: { value: "Mensaje automatizado." }
+    });
+    fireEvent.change(honeypot!, {
+      target: { value: "https://spam.example" }
+    });
+    fireEvent.click(within(contactForm).getByRole("button", { name: "Enviar contacto" }));
+
+    expect(await within(contactForm).findByRole("alert")).toHaveTextContent(
+      "No pudimos enviar la solicitud. Intenta de nuevo o usa otro canal de contacto."
+    );
+    expect(publicEmailService.send).not.toHaveBeenCalled();
+  });
+
+  it("does not expose or send recipient override fields from public forms", async () => {
+    const publicEmailService = {
+      send: vi.fn(async (_request: unknown) => {})
+    };
+
+    render(<App content={content} publicEmailService={publicEmailService} />);
+
+    const publicForms = screen.getByRole("region", {
+      name: "Contacto y Donacion de mercaderia"
+    });
+    expect(
+      within(publicForms).queryByLabelText(/destinatario|receptor/i)
+    ).not.toBeInTheDocument();
+
+    const contactForm = screen.getByRole("form", { name: "Contacto" });
+
+    fireEvent.change(within(contactForm).getByLabelText("Nombre y apellido"), {
+      target: { value: "Ana Visitante" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Email o telefono"), {
+      target: { value: "ana@example.com" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Asunto"), {
+      target: { value: "to=externo@example.com" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Mensaje"), {
+      target: { value: "cc: externo@example.com\nPor favor responder." }
+    });
+    fireEvent.click(within(contactForm).getByRole("button", { name: "Enviar contacto" }));
+
+    await within(contactForm).findByRole("status");
+    const sentRequest = publicEmailService.send.mock.calls[0]![0] as Record<
+      string,
+      unknown
+    >;
+
+    expect(Object.keys(sentRequest).sort()).toEqual([
+      "contact",
+      "kind",
+      "message",
+      "name",
+      "subject"
+    ]);
+    expect(sentRequest).not.toEqual(
+      expect.objectContaining({ to: expect.anything() })
+    );
+    expect(sentRequest).not.toEqual(
+      expect.objectContaining({ recipients: expect.anything() })
+    );
+    expect(sentRequest).not.toEqual(
+      expect.objectContaining({ cc: expect.anything() })
+    );
+    expect(sentRequest).not.toEqual(
+      expect.objectContaining({ bcc: expect.anything() })
+    );
+  });
+
+  it("rate limits repeated public submissions deterministically", async () => {
+    const publicEmailService = {
+      send: vi.fn(async (_request: unknown) => {})
+    };
+
+    render(
+      <App
+        content={content}
+        currentTime={() => 1_000}
+        publicEmailService={publicEmailService}
+      />
+    );
+
+    const contactForm = screen.getByRole("form", { name: "Contacto" });
+
+    for (const suffix of ["uno", "dos"]) {
+      fireEvent.change(within(contactForm).getByLabelText("Nombre y apellido"), {
+        target: { value: `Visitante ${suffix}` }
+      });
+      fireEvent.change(within(contactForm).getByLabelText("Email o telefono"), {
+        target: { value: `${suffix}@example.com` }
+      });
+      fireEvent.change(within(contactForm).getByLabelText("Asunto"), {
+        target: { value: `Consulta ${suffix}` }
+      });
+      fireEvent.change(within(contactForm).getByLabelText("Mensaje"), {
+        target: { value: `Mensaje ${suffix}.` }
+      });
+      fireEvent.click(within(contactForm).getByRole("button", { name: "Enviar contacto" }));
+
+      await waitFor(() => {
+        expect(publicEmailService.send).toHaveBeenCalledTimes(
+          suffix === "uno" ? 1 : 2
+        );
+      });
+    }
+
+    fireEvent.change(within(contactForm).getByLabelText("Nombre y apellido"), {
+      target: { value: "Visitante tres" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Email o telefono"), {
+      target: { value: "tres@example.com" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Asunto"), {
+      target: { value: "Consulta tres" }
+    });
+    fireEvent.change(within(contactForm).getByLabelText("Mensaje"), {
+      target: { value: "Mensaje tres." }
+    });
+    fireEvent.click(within(contactForm).getByRole("button", { name: "Enviar contacto" }));
+
+    expect(await within(contactForm).findByRole("alert")).toHaveTextContent(
+      "Recibimos demasiados envios seguidos. Espera unos minutos antes de intentar otra vez."
+    );
+    expect(publicEmailService.send).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import type {
   CampaignPublication,
   EventPublication,
@@ -21,16 +21,51 @@ import { authorizeGoogleAccount, can, roleLabels } from "./domain/auth";
 import { siteContent } from "./content/siteContent";
 import { browserGoogleAuthClient } from "./content/googleAuthClient";
 import { privatePanelAuthConfig } from "./content/privatePanelConfig";
+import {
+  publicEmailService as browserPublicEmailService,
+  type ContactEmailRequest,
+  type GoodsDonationEmailRequest,
+  type PublicEmailRequest,
+  type PublicEmailService
+} from "./content/publicEmailService";
 import "./styles.css";
 
 type AppProps = {
   content?: SiteContent;
   authConfig?: AuthConfig;
   googleAuthClient?: GoogleAuthClient;
+  publicEmailService?: PublicEmailService;
+  currentTime?: () => number;
   now?: Date;
 };
 
 type AuthStatus = "idle" | "loading";
+
+type PublicFormStatus =
+  | { kind: "idle" }
+  | { kind: "sending" }
+  | { kind: "success"; message: string }
+  | { kind: "error"; message: string };
+
+type PublicEmailSubmissionResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+type ContactFormValues = {
+  name: string;
+  contact: string;
+  subject: string;
+  message: string;
+  website: string;
+};
+
+type GoodsDonationFormValues = {
+  name: string;
+  contact: string;
+  goodsDescription: string;
+  message: string;
+  website: string;
+};
 
 type NewsDraftInput = {
   title: string;
@@ -121,6 +156,35 @@ const emptyNewsFormValues: NewsFormValues = {
   imageReference: ""
 };
 
+const emptyContactFormValues: ContactFormValues = {
+  name: "",
+  contact: "",
+  subject: "",
+  message: "",
+  website: ""
+};
+
+const emptyGoodsDonationFormValues: GoodsDonationFormValues = {
+  name: "",
+  contact: "",
+  goodsDescription: "",
+  message: "",
+  website: ""
+};
+
+const contactSuccessMessage =
+  "Tu mensaje fue enviado. La iglesia respondera por el contacto indicado.";
+const goodsDonationSuccessMessage =
+  "Tu ofrecimiento de mercaderia fue enviado. La iglesia respondera por el contacto indicado.";
+const publicEmailFailureMessage =
+  "No pudimos enviar la solicitud. Intenta de nuevo o usa otro canal de contacto.";
+const publicEmailIncompleteMessage =
+  "Completa los campos obligatorios antes de enviar.";
+const publicEmailRateLimitMessage =
+  "Recibimos demasiados envios seguidos. Espera unos minutos antes de intentar otra vez.";
+const publicEmailRateLimitWindowMs = 60_000;
+const publicEmailRateLimitMaxAttempts = 2;
+
 const emptyCampaignFormValues: CampaignFormValues = {
   title: "",
   description: "",
@@ -187,6 +251,8 @@ export function App({
   content = siteContent,
   authConfig = privatePanelAuthConfig,
   googleAuthClient = browserGoogleAuthClient,
+  publicEmailService = browserPublicEmailService,
+  currentTime = () => Date.now(),
   now = new Date()
 }: AppProps) {
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
@@ -201,6 +267,43 @@ export function App({
   const [socialEmbeds, setSocialEmbeds] = useState<SocialEmbedPublication[]>(
     () => content.socialEmbeds
   );
+  const publicEmailSubmissionTimes = useRef<number[]>([]);
+
+  function reservePublicEmailSubmissionAttempt() {
+    const submittedAt = currentTime();
+    const recentSubmissionTimes = publicEmailSubmissionTimes.current.filter(
+      (previousSubmissionAt) =>
+        submittedAt - previousSubmissionAt < publicEmailRateLimitWindowMs
+    );
+
+    if (recentSubmissionTimes.length >= publicEmailRateLimitMaxAttempts) {
+      publicEmailSubmissionTimes.current = recentSubmissionTimes;
+      return false;
+    }
+
+    publicEmailSubmissionTimes.current = [...recentSubmissionTimes, submittedAt];
+    return true;
+  }
+
+  async function handlePublicEmailSubmission(
+    request: PublicEmailRequest,
+    honeypotValue: string
+  ): Promise<PublicEmailSubmissionResult> {
+    if (honeypotValue.trim().length > 0) {
+      return { ok: false, message: publicEmailFailureMessage };
+    }
+
+    if (!reservePublicEmailSubmissionAttempt()) {
+      return { ok: false, message: publicEmailRateLimitMessage };
+    }
+
+    try {
+      await publicEmailService.send(request);
+      return { ok: true };
+    } catch {
+      return { ok: false, message: publicEmailFailureMessage };
+    }
+  }
 
   async function handleGoogleSignIn() {
     setAuthStatus("loading");
@@ -546,6 +649,8 @@ export function App({
         />
       </section>
 
+      <PublicContactForms onSubmit={handlePublicEmailSubmission} />
+
       <PrivatePanel
         authMessage={authMessage}
         authStatus={authStatus}
@@ -586,6 +691,257 @@ export function App({
       <footer className="footer">{content.costNote}</footer>
     </main>
   );
+}
+
+type PublicContactFormsProps = {
+  onSubmit: (
+    request: PublicEmailRequest,
+    honeypotValue: string
+  ) => Promise<PublicEmailSubmissionResult>;
+};
+
+function PublicContactForms({ onSubmit }: PublicContactFormsProps) {
+  return (
+    <section className="public-contact-forms" aria-labelledby="public-contact-title">
+      <div>
+        <p className="eyebrow">Canales publicos</p>
+        <h2 id="public-contact-title">Contacto y Donacion de mercaderia</h2>
+        <p>
+          Envia una consulta general o avisa una donacion de mercaderia. La web no
+          guarda estos formularios en la base de datos del MVP.
+        </p>
+      </div>
+
+      <div className="public-form-grid">
+        <ContactForm onSubmit={onSubmit} />
+        <GoodsDonationForm onSubmit={onSubmit} />
+      </div>
+    </section>
+  );
+}
+
+function ContactForm({ onSubmit }: PublicContactFormsProps) {
+  const [formValues, setFormValues] = useState<ContactFormValues>(emptyContactFormValues);
+  const [status, setStatus] = useState<PublicFormStatus>({ kind: "idle" });
+
+  function handleFormChange(field: keyof ContactFormValues, value: string) {
+    setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  async function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const request = normalizeContactFormValues(formValues);
+
+    if (!isCompleteContactEmailRequest(request)) {
+      setStatus({ kind: "error", message: publicEmailIncompleteMessage });
+      return;
+    }
+
+    setStatus({ kind: "sending" });
+    const result = await onSubmit(request, formValues.website);
+
+    if (result.ok) {
+      setFormValues(emptyContactFormValues);
+      setStatus({ kind: "success", message: contactSuccessMessage });
+      return;
+    }
+
+    setStatus({ kind: "error", message: result.message });
+  }
+
+  return (
+    <form
+      aria-labelledby="contact-form-title"
+      className="public-email-form"
+      onSubmit={handleFormSubmit}
+    >
+      <h3 id="contact-form-title">Contacto</h3>
+      <p>
+        Canal de contacto general para consultas de Visitantes. No reemplaza una
+        atencion urgente ni un seguimiento pastoral confidencial.
+      </p>
+      <label>
+        Nombre y apellido
+        <input
+          onChange={(event) => handleFormChange("name", event.target.value)}
+          required
+          type="text"
+          value={formValues.name}
+        />
+      </label>
+      <label>
+        Email o telefono
+        <input
+          onChange={(event) => handleFormChange("contact", event.target.value)}
+          required
+          type="text"
+          value={formValues.contact}
+        />
+      </label>
+      <label>
+        Asunto
+        <input
+          onChange={(event) => handleFormChange("subject", event.target.value)}
+          required
+          type="text"
+          value={formValues.subject}
+        />
+      </label>
+      <label>
+        Mensaje
+        <textarea
+          onChange={(event) => handleFormChange("message", event.target.value)}
+          required
+          value={formValues.message}
+        />
+      </label>
+      <HoneypotField
+        onChange={(value) => handleFormChange("website", value)}
+        value={formValues.website}
+      />
+      <PublicFormFeedback status={status} />
+      <div className="action-row">
+        <button disabled={status.kind === "sending"} type="submit">
+          {status.kind === "sending" ? "Enviando contacto..." : "Enviar contacto"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function GoodsDonationForm({ onSubmit }: PublicContactFormsProps) {
+  const [formValues, setFormValues] = useState<GoodsDonationFormValues>(
+    emptyGoodsDonationFormValues
+  );
+  const [status, setStatus] = useState<PublicFormStatus>({ kind: "idle" });
+
+  function handleFormChange(field: keyof GoodsDonationFormValues, value: string) {
+    setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  async function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const request = normalizeGoodsDonationFormValues(formValues);
+
+    if (!isCompleteGoodsDonationEmailRequest(request)) {
+      setStatus({ kind: "error", message: publicEmailIncompleteMessage });
+      return;
+    }
+
+    setStatus({ kind: "sending" });
+    const result = await onSubmit(request, formValues.website);
+
+    if (result.ok) {
+      setFormValues(emptyGoodsDonationFormValues);
+      setStatus({ kind: "success", message: goodsDonationSuccessMessage });
+      return;
+    }
+
+    setStatus({ kind: "error", message: result.message });
+  }
+
+  return (
+    <form
+      aria-labelledby="goods-donation-form-title"
+      className="public-email-form"
+      onSubmit={handleFormSubmit}
+    >
+      <h3 id="goods-donation-form-title">Donacion de mercaderia</h3>
+      <p>
+        Avisa que mercaderia queres donar para que la iglesia coordine la recepcion
+        por fuera de esta web.
+      </p>
+      <label>
+        Nombre y apellido
+        <input
+          onChange={(event) => handleFormChange("name", event.target.value)}
+          required
+          type="text"
+          value={formValues.name}
+        />
+      </label>
+      <label>
+        Email o telefono
+        <input
+          onChange={(event) => handleFormChange("contact", event.target.value)}
+          required
+          type="text"
+          value={formValues.contact}
+        />
+      </label>
+      <label>
+        Descripcion de mercaderia
+        <textarea
+          onChange={(event) => handleFormChange("goodsDescription", event.target.value)}
+          required
+          value={formValues.goodsDescription}
+        />
+      </label>
+      <label>
+        Mensaje opcional
+        <textarea
+          onChange={(event) => handleFormChange("message", event.target.value)}
+          value={formValues.message}
+        />
+      </label>
+      <HoneypotField
+        onChange={(value) => handleFormChange("website", value)}
+        value={formValues.website}
+      />
+      <PublicFormFeedback status={status} />
+      <div className="action-row">
+        <button disabled={status.kind === "sending"} type="submit">
+          {status.kind === "sending"
+            ? "Enviando donacion..."
+            : "Enviar donacion de mercaderia"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function HoneypotField({
+  onChange,
+  value
+}: {
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="honeypot-field" aria-hidden="true">
+      Sitio web
+      <input
+        autoComplete="off"
+        name="website"
+        onChange={(event) => onChange(event.target.value)}
+        tabIndex={-1}
+        type="text"
+        value={value}
+      />
+    </label>
+  );
+}
+
+function PublicFormFeedback({ status }: { status: PublicFormStatus }) {
+  if (status.kind === "success") {
+    return (
+      <p className="form-feedback form-feedback-success" role="status">
+        {status.message}
+      </p>
+    );
+  }
+
+  if (status.kind === "error") {
+    return (
+      <p className="form-feedback form-feedback-error" role="alert">
+        {status.message}
+      </p>
+    );
+  }
+
+  return null;
 }
 
 type PrivatePanelProps = {
@@ -2226,6 +2582,47 @@ function isCompleteCampaignDraft(input: CampaignDraftInput) {
     input.description.length > 0 &&
     input.imageReference.length > 0 &&
     input.callToActionText.length > 0
+  );
+}
+
+function normalizeContactFormValues(values: ContactFormValues): ContactEmailRequest {
+  return {
+    kind: "contact",
+    name: values.name.trim(),
+    contact: values.contact.trim(),
+    subject: values.subject.trim(),
+    message: values.message.trim()
+  };
+}
+
+function isCompleteContactEmailRequest(request: ContactEmailRequest) {
+  return (
+    request.name.length > 0 &&
+    request.contact.length > 0 &&
+    request.subject.length > 0 &&
+    request.message.length > 0
+  );
+}
+
+function normalizeGoodsDonationFormValues(
+  values: GoodsDonationFormValues
+): GoodsDonationEmailRequest {
+  const message = values.message.trim();
+
+  return {
+    kind: "goods_donation",
+    name: values.name.trim(),
+    contact: values.contact.trim(),
+    goodsDescription: values.goodsDescription.trim(),
+    message: message || undefined
+  };
+}
+
+function isCompleteGoodsDonationEmailRequest(request: GoodsDonationEmailRequest) {
+  return (
+    request.name.length > 0 &&
+    request.contact.length > 0 &&
+    request.goodsDescription.length > 0
   );
 }
 

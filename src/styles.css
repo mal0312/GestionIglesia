@@ -27,6 +27,7 @@ body {
 .hero,
 .future-sections,
 .public-campaigns,
+.public-contact-forms,
 .public-events,
 .public-news,
 .public-social-embeds,
@@ -100,6 +101,7 @@ h1 {
 }
 
 .public-campaigns,
+.public-contact-forms,
 .public-events,
 .public-social-embeds,
 .public-sermons {
@@ -111,6 +113,7 @@ h1 {
 
 .future-sections h2,
 .public-campaigns h2,
+.public-contact-forms h2,
 .public-events h2,
 .public-news h2,
 .public-social-embeds h2,
@@ -143,6 +146,7 @@ h1 {
 
 .section-card p,
 .public-campaigns p,
+.public-contact-forms p,
 .public-events p,
 .public-news p,
 .public-social-embeds p,
@@ -271,6 +275,7 @@ h1 {
 }
 
 .public-news-card,
+.public-email-form,
 .news-form,
 .news-review-panel,
 .news-panel-card {
@@ -284,6 +289,7 @@ h1 {
 }
 
 .news-form,
+.public-email-form,
 .news-review-panel {
   display: grid;
   gap: 14px;
@@ -295,7 +301,8 @@ h1 {
   gap: 18px;
 }
 
-.news-form label {
+.news-form label,
+.public-email-form label {
   display: grid;
   gap: 6px;
   color: #374151;
@@ -304,7 +311,9 @@ h1 {
 
 .news-form input,
 .news-form select,
-.news-form textarea {
+.news-form textarea,
+.public-email-form input,
+.public-email-form textarea {
   width: 100%;
   border: 1px solid rgba(120, 53, 15, 0.22);
   border-radius: 14px;
@@ -314,12 +323,14 @@ h1 {
   padding: 10px 12px;
 }
 
-.news-form textarea {
+.news-form textarea,
+.public-email-form textarea {
   min-height: 112px;
   resize: vertical;
 }
 
 .public-news-card h3,
+.public-email-form h3,
 .news-form h4,
 .news-review-panel h4,
 .news-panel-card h5 {
@@ -412,6 +423,37 @@ h1 {
 
 .news-panel-card .action-row {
   margin-top: 14px;
+}
+
+.public-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.form-feedback {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-weight: 800;
+}
+
+.form-feedback-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.form-feedback-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.honeypot-field {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 
 .role-label {
