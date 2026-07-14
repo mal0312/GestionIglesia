@@ -38,3 +38,16 @@ Si no hay `VITE_GOOGLE_CLIENT_ID`, `VITE_DEV_GOOGLE_SIGN_IN_EMAIL` es solo para
 app pide el email con un prompt en modo desarrollo. La integracion de Google esta
 modelada como un cliente inyectable para poder probar el flujo sin guardar emails
 reales en el comportamiento del producto.
+
+## Persistencia Firebase
+
+La app activa Firestore solo si existen estas variables de entorno:
+
+```bash
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+```
+
+Si faltan, el sitio usa el contenido estatico y no inicializa Firebase. Para mantener el objetivo de costo 0 USD, la persistencia de noticias usa un unico documento en Firestore, lecturas puntuales sin listeners en tiempo real, cache local de 5 minutos y omite escrituras cuando el contenido no cambia.

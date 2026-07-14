@@ -1033,7 +1033,11 @@ describe("Predicacion editorial flow", () => {
     expect(
       await within(panel).findByText(/Sesion activa: editora@example.com/)
     ).toBeInTheDocument();
-    expect(panel.querySelector('input[type="file"]')).toBeNull();
+    const sermonFormTitle = within(panel).getByRole("heading", {
+      level: 4,
+      name: "Nuevo Borrador Predicacion"
+    });
+    expect(sermonFormTitle.closest("form")!.querySelector('input[type="file"]')).toBeNull();
 
     fireEvent.change(within(panel).getByLabelText("Titulo de la predicacion"), {
       target: { value: "Cristo en el centro" }
@@ -1681,6 +1685,270 @@ describe("Noticia revision pendiente", () => {
     expect(within(panel).queryByText("Pendiente de revision")).not.toBeInTheDocument();
     expect(within(publicNews).getByText("Culto de domingo")).toBeInTheDocument();
     expect(within(publicNews).queryByText("Culto de domingo actualizado")).not.toBeInTheDocument();
+  });
+});
+
+describe("persistence service integration", () => {
+  it("loads news from a provided persistence service on mount", async () => {
+    const preexistingNews: NewsPublication[] = [
+      {
+        id: "noticia-1",
+        title: "Previa",
+        summary: "Resumen previo.",
+        body: "Cuerpo previo.",
+        status: "published"
+      }
+    ];
+
+    const persistenceService = {
+      async getAll() {
+        return preexistingNews;
+      },
+      async replaceAll(_news: NewsPublication[]) {}
+    };
+
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+        newsPersistenceService={persistenceService}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+    await waitFor(() => {
+      expect(within(publicNews).getByText("Previa")).toBeInTheDocument();
+    });
+  });
+
+  it("persists a newly created draft through the persistence service", async () => {
+    let stored: NewsPublication[] = [];
+
+    const persistenceService = {
+      async getAll() {
+        return stored;
+      },
+      async replaceAll(news: NewsPublication[]) {
+        stored = news;
+      }
+    };
+
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturning("editora@example.com")}
+        newsPersistenceService={persistenceService}
+      />
+    );
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+    await within(panel).findByText(/Sesion activa: editora@example.com/);
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Persistida" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "Resumen persistido." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Cuerpo persistido." }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+
+    await waitFor(() => {
+      expect(stored).toHaveLength(1);
+    });
+    expect(stored[0]!.title).toBe("Persistida");
+  });
+});
+
+describe("Noticia MediaAsset editorial flow", () => {
+  it("lets an Editor attach external image MediaAsset with alt text and keeps it public only after approval", async () => {
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Merienda comunitaria" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "La iglesia compartio una tarde con el barrio." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Hubo juegos, merienda y acompanamiento pastoral." }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL externa de imagen"), {
+      target: { value: "https://cdn.example.org/merienda.jpg" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Texto alternativo de imagen"), {
+      target: { value: "Ninos compartiendo merienda en la iglesia" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar a revision" }));
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Aviso con imagen rechazada" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "No debe aparecer en publico." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "Esta noticia con MediaAsset sera rechazada." }
+    });
+    fireEvent.change(within(panel).getByLabelText("URL externa de imagen"), {
+      target: { value: "https://cdn.example.org/rechazada.jpg" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Texto alternativo de imagen"), {
+      target: { value: "Imagen que no debe ser publica" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar a revision" }));
+
+    expect(
+      within(publicNews).queryByRole("img", {
+        name: "Ninos compartiendo merienda en la iglesia"
+      })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", {
+      name: "Merienda comunitaria"
+    });
+    fireEvent.click(within(approvedCard).getByRole("button", { name: "Aprobar noticia" }));
+
+    const rejectedCard = within(panel).getByRole("article", {
+      name: "Aviso con imagen rechazada"
+    });
+    fireEvent.click(within(rejectedCard).getByRole("button", { name: "Rechazar noticia" }));
+
+    expect(
+      within(publicNews).getByRole("img", {
+        name: "Ninos compartiendo merienda en la iglesia"
+      })
+    ).toHaveAttribute("src", "https://cdn.example.org/merienda.jpg");
+    expect(
+      within(publicNews).queryByRole("img", {
+        name: "Imagen que no debe ser publica"
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it("optimizes an uploaded image MediaAsset before storing and publishing it", async () => {
+    let stored: NewsPublication[] = [];
+    const originalFile = new File(["original image bytes"], "culto-original.png", {
+      type: "image/png"
+    });
+    const optimizeImageFile = vi.fn(async (file: File) => ({
+      url: `data:image/webp;base64,optimized-${file.name}`,
+      originalFileName: file.name
+    }));
+
+    render(
+      <App
+        authConfig={authConfig}
+        content={content}
+        googleAuthClient={googleAuthClientReturningSequence([
+          "editora@example.com",
+          "admin@example.com"
+        ])}
+        imageOptimizer={{ optimizeImageFile }}
+        newsPersistenceService={{
+          async getAll() {
+            return stored;
+          },
+          async replaceAll(news) {
+            stored = news;
+          }
+        }}
+      />
+    );
+
+    const publicNews = screen.getByRole("region", { name: "Noticias publicadas" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    const panel = screen.getByRole("region", { name: "Panel privado" });
+
+    expect(
+      await within(panel).findByText(/Sesion activa: editora@example.com/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Titulo de la noticia"), {
+      target: { value: "Culto con imagen subida" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Resumen"), {
+      target: { value: "La imagen subida se optimiza antes de guardar." }
+    });
+    fireEvent.change(within(panel).getByLabelText("Cuerpo"), {
+      target: { value: "El archivo original no debe publicarse sin optimizar." }
+    });
+    expect(within(panel).getByLabelText("Imagen para optimizar")).toHaveAttribute(
+      "accept",
+      "image/*"
+    );
+    fireEvent.change(within(panel).getByLabelText("Imagen para optimizar"), {
+      target: { files: [originalFile] }
+    });
+    fireEvent.change(within(panel).getByLabelText("Texto alternativo de imagen"), {
+      target: { value: "Congregacion durante el culto" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear borrador" }));
+
+    await waitFor(() => {
+      expect(optimizeImageFile).toHaveBeenCalledWith(originalFile);
+      expect(stored).toHaveLength(1);
+    });
+    expect(stored[0]!.mediaAsset).toEqual({
+      kind: "uploaded_image",
+      url: "data:image/webp;base64,optimized-culto-original.png",
+      altText: "Congregacion durante el culto",
+      optimized: true,
+      originalFileName: "culto-original.png"
+    });
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Enviar a revision" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Cerrar sesion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entrar con Google" }));
+
+    expect(
+      await within(panel).findByText(/Sesion activa: admin@example.com/)
+    ).toBeInTheDocument();
+
+    const approvedCard = within(panel).getByRole("article", {
+      name: "Culto con imagen subida"
+    });
+    fireEvent.click(within(approvedCard).getByRole("button", { name: "Aprobar noticia" }));
+
+    expect(
+      within(publicNews).getByRole("img", { name: "Congregacion durante el culto" })
+    ).toHaveAttribute("src", "data:image/webp;base64,optimized-culto-original.png");
   });
 });
 

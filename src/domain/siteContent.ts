@@ -70,11 +70,26 @@ export type SocialEmbedPublication = {
   status: SocialEmbedStatus;
 };
 
+export type MediaAsset =
+  | {
+      kind: "external_image";
+      url: string;
+      altText: string;
+    }
+  | {
+      kind: "uploaded_image";
+      url: string;
+      altText: string;
+      optimized: true;
+      originalFileName: string;
+    };
+
 export type NewsDraftVersion = {
   title: string;
   summary: string;
   body: string;
   imageReference?: string;
+  mediaAsset?: MediaAsset;
 };
 
 export type NewsPublication = {
@@ -83,6 +98,7 @@ export type NewsPublication = {
   summary: string;
   body: string;
   imageReference?: string;
+  mediaAsset?: MediaAsset;
   status: NewsStatus;
   pendingVersion?: NewsDraftVersion;
 };

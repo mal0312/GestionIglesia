@@ -1,7 +1,8 @@
-import { type FormEvent, useRef, useState } from "react";
+import { useEffect, type FormEvent, useRef, useState } from "react";
 import type {
   CampaignPublication,
   EventPublication,
+  MediaAsset,
   NewsDraftVersion,
   NewsPublication,
   PublicationStatus,
@@ -28,12 +29,15 @@ import {
   type PublicEmailRequest,
   type PublicEmailService
 } from "./content/publicEmailService";
+import type { NewsPersistenceService } from "./persistence/NewsPersistenceService";
 import "./styles.css";
 
 type AppProps = {
   content?: SiteContent;
   authConfig?: AuthConfig;
   googleAuthClient?: GoogleAuthClient;
+  imageOptimizer?: ImageOptimizer;
+  newsPersistenceService?: NewsPersistenceService;
   publicEmailService?: PublicEmailService;
   currentTime?: () => number;
   now?: Date;
@@ -72,13 +76,30 @@ type NewsDraftInput = {
   summary: string;
   body: string;
   imageReference?: string;
+  mediaAsset?: MediaAsset;
+  mediaAltText?: string;
+  uploadedImageFile?: File;
 };
 
 type NewsFormValues = {
   title: string;
   summary: string;
   body: string;
+  externalImageUrl: string;
+  mediaAltText: string;
+  uploadedImageFile: File | null;
   imageReference: string;
+};
+
+type NewsTextFormField = Exclude<keyof NewsFormValues, "uploadedImageFile">;
+
+type OptimizedImage = {
+  url: string;
+  originalFileName: string;
+};
+
+type ImageOptimizer = {
+  optimizeImageFile(file: File): Promise<OptimizedImage>;
 };
 
 type CampaignDraftInput = {
@@ -153,6 +174,9 @@ const emptyNewsFormValues: NewsFormValues = {
   title: "",
   summary: "",
   body: "",
+  externalImageUrl: "",
+  mediaAltText: "",
+  uploadedImageFile: null,
   imageReference: ""
 };
 
@@ -247,10 +271,45 @@ const finalAuthorityActions: Array<{
   { label: "Archivar contenido", capability: "archive_content" }
 ];
 
+const browserImageOptimizer: ImageOptimizer = {
+  async optimizeImageFile(file) {
+    if (!file.type.startsWith("image/")) {
+      throw new Error("MediaAsset uploads must be images.");
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    const image = await loadBrowserImage(dataUrl);
+    const maxDimension = 1600;
+    const scale = Math.min(
+      1,
+      maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Image optimization is not available in this browser.");
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    return {
+      url: canvas.toDataURL("image/webp", 0.82),
+      originalFileName: file.name
+    };
+  }
+};
+
 export function App({
   content = siteContent,
   authConfig = privatePanelAuthConfig,
   googleAuthClient = browserGoogleAuthClient,
+  imageOptimizer = browserImageOptimizer,
+  newsPersistenceService,
   publicEmailService = browserPublicEmailService,
   currentTime = () => Date.now(),
   now = new Date()
@@ -258,7 +317,9 @@ export function App({
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("idle");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
-  const [news, setNews] = useState<NewsPublication[]>(() => content.news);
+  const [news, setNews] = useState<NewsPublication[]>(() =>
+    newsPersistenceService ? [] : content.news
+  );
   const [campaigns, setCampaigns] = useState<CampaignPublication[]>(
     () => content.campaigns
   );
@@ -268,6 +329,60 @@ export function App({
     () => content.socialEmbeds
   );
   const publicEmailSubmissionTimes = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (newsPersistenceService) {
+      newsPersistenceService.getAll().then((loadedNews) => {
+        setNews(loadedNews);
+      });
+    }
+  }, []);
+
+  async function save(currentNews: NewsPublication[]) {
+    setNews(currentNews);
+    if (newsPersistenceService) {
+      await newsPersistenceService.replaceAll(currentNews);
+    }
+  }
+
+  function prepareNewsDraftVersion(
+    input: NewsDraftInput
+  ): NewsDraftVersion | Promise<NewsDraftVersion> {
+    const { mediaAltText, uploadedImageFile, ...draftVersion } = input;
+
+    if (draftVersion.mediaAsset || !uploadedImageFile || !mediaAltText) {
+      return draftVersion;
+    }
+
+    if (!uploadedImageFile.type.startsWith("image/")) {
+      return draftVersion;
+    }
+
+    return imageOptimizer.optimizeImageFile(uploadedImageFile).then((optimizedImage) => ({
+      ...draftVersion,
+      mediaAsset: {
+        kind: "uploaded_image",
+        url: optimizedImage.url,
+        altText: mediaAltText,
+        optimized: true,
+        originalFileName: optimizedImage.originalFileName
+      }
+    }));
+  }
+
+  async function savePreparedNewsDraft(
+    input: NewsDraftInput,
+    buildNextNews: (draftVersion: NewsDraftVersion) => NewsPublication[]
+  ) {
+    const draftVersion = prepareNewsDraftVersion(input);
+
+    if (draftVersion instanceof Promise) {
+      await save(buildNextNews(await draftVersion));
+      return;
+    }
+
+    await save(buildNextNews(draftVersion));
+  }
 
   function reservePublicEmailSubmissionAttempt() {
     const submittedAt = currentTime();
@@ -337,97 +452,97 @@ export function App({
     setAuthMessage(null);
   }
 
-  function handleCreateDraftNews(input: NewsDraftInput) {
-    setNews((currentNews) => [
-      ...currentNews,
+  async function handleCreateDraftNews(input: NewsDraftInput) {
+    await savePreparedNewsDraft(input, (draftVersion) => [
+      ...news,
       {
-        ...input,
-        id: createNewsId(currentNews),
-        status: "draft"
+        ...draftVersion,
+        id: createNewsId(news),
+        status: "draft" as const
       }
     ]);
   }
 
-  function handleUpdateDraftNews(newsId: string, input: NewsDraftInput) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
+  async function handleUpdateDraftNews(newsId: string, input: NewsDraftInput) {
+    await savePreparedNewsDraft(input, (draftVersion) =>
+      news.map((newsItem) =>
         newsItem.id === newsId && newsItem.status === "draft"
-          ? { ...newsItem, ...input }
+          ? { ...newsItem, ...draftVersion }
           : newsItem
       )
     );
   }
 
-  function handleSubmitNewsForReview(newsId: string) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
-        newsItem.id === newsId && newsItem.status === "draft"
-          ? { ...newsItem, status: "pending_review" }
-          : newsItem
-      )
+  async function handleSubmitNewsForReview(newsId: string) {
+    const currentNews = news.map((newsItem) =>
+      newsItem.id === newsId && newsItem.status === "draft"
+        ? { ...newsItem, status: "pending_review" as const }
+        : newsItem
     );
+    await save(currentNews);
   }
 
-  function handleApproveNews(newsId: string) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
-        newsItem.id === newsId && newsItem.status === "pending_review"
-          ? { ...newsItem, status: "published" }
-          : newsItem
-      )
+  async function handleApproveNews(newsId: string) {
+    const currentNews = news.map((newsItem) =>
+      newsItem.id === newsId && newsItem.status === "pending_review"
+        ? { ...newsItem, status: "published" as const }
+        : newsItem
     );
+    await save(currentNews);
   }
 
-  function handleRejectNews(newsId: string) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
-        newsItem.id === newsId && newsItem.status === "pending_review"
-          ? { ...newsItem, status: "rejected" }
-          : newsItem
-      )
+  async function handleRejectNews(newsId: string) {
+    const currentNews = news.map((newsItem) =>
+      newsItem.id === newsId && newsItem.status === "pending_review"
+        ? { ...newsItem, status: "rejected" as const }
+        : newsItem
     );
+    await save(currentNews);
   }
 
-  function handleProposeRevision(newsId: string, input: NewsDraftVersion) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
+  async function handleProposeRevision(newsId: string, input: NewsDraftVersion) {
+    await savePreparedNewsDraft(input, (draftVersion) =>
+      news.map((newsItem) =>
         newsItem.id === newsId && newsItem.status === "published"
-          ? { ...newsItem, status: "pending_review", pendingVersion: input }
-          : newsItem
-      )
-    );
-  }
-
-  function handleApproveRevision(newsId: string) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
-        newsItem.id === newsId &&
-        newsItem.status === "pending_review" &&
-        newsItem.pendingVersion
           ? {
               ...newsItem,
-              title: newsItem.pendingVersion.title,
-              summary: newsItem.pendingVersion.summary,
-              body: newsItem.pendingVersion.body,
-              imageReference: newsItem.pendingVersion.imageReference,
-              status: "published",
-              pendingVersion: undefined
+              status: "pending_review" as const,
+              pendingVersion: draftVersion
             }
           : newsItem
       )
     );
   }
 
-  function handleRejectRevision(newsId: string) {
-    setNews((currentNews) =>
-      currentNews.map((newsItem) =>
-        newsItem.id === newsId &&
-        newsItem.status === "pending_review" &&
-        newsItem.pendingVersion
-          ? { ...newsItem, status: "published", pendingVersion: undefined }
-          : newsItem
-      )
+  async function handleApproveRevision(newsId: string) {
+    const currentNews = news.map((newsItem) =>
+      newsItem.id === newsId &&
+      newsItem.status === "pending_review" &&
+      newsItem.pendingVersion
+        ? {
+            ...newsItem,
+            title: newsItem.pendingVersion.title,
+            summary: newsItem.pendingVersion.summary,
+            body: newsItem.pendingVersion.body,
+            imageReference: newsItem.pendingVersion.imageReference,
+            mediaAsset: newsItem.pendingVersion.mediaAsset,
+            status: "published" as const,
+            pendingVersion: undefined
+          }
+        : newsItem
     );
+    await save(currentNews);
+  }
+
+  async function handleRejectRevision(newsId: string) {
+    const currentNews = news.map((newsItem) =>
+      newsItem.id === newsId &&
+      newsItem.status === "pending_review" &&
+      newsItem.pendingVersion
+        ? { ...newsItem, status: "published" as const, pendingVersion: undefined }
+        : newsItem
+    );
+    await save(currentNews);
   }
 
   function handleCreateDraftCampaign(input: CampaignDraftInput) {
@@ -955,30 +1070,30 @@ type PrivatePanelProps = {
   socialEmbeds: SocialEmbedPublication[];
   onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
-  onApproveNews: (newsId: string) => void;
-  onApproveRevision: (newsId: string) => void;
+  onApproveNews: (newsId: string) => Promise<void>;
+  onApproveRevision: (newsId: string) => Promise<void>;
   onApproveSermon: (sermonId: string) => void;
   onApproveSocialEmbed: (socialEmbedId: string) => void;
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
-  onCreateDraftNews: (input: NewsDraftInput) => void;
+  onCreateDraftNews: (input: NewsDraftInput) => Promise<void>;
   onCreateDraftSermon: (input: SermonDraftInput) => void;
   onCreateDraftSocialEmbed: (input: SocialEmbedDraftInput) => void;
-  onGoogleSignIn: () => void;
-  onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
+  onGoogleSignIn: () => Promise<void>;
+  onProposeRevision: (newsId: string, input: NewsDraftVersion) => Promise<void>;
   onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
-  onRejectNews: (newsId: string) => void;
-  onRejectRevision: (newsId: string) => void;
+  onRejectNews: (newsId: string) => Promise<void>;
+  onRejectRevision: (newsId: string) => Promise<void>;
   onRejectSermon: (sermonId: string) => void;
   onRejectSocialEmbed: (socialEmbedId: string) => void;
   onSignOut: () => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
-  onSubmitNewsForReview: (newsId: string) => void;
+  onSubmitNewsForReview: (newsId: string) => Promise<void>;
   onSubmitSermonForReview: (sermonId: string) => void;
   onSubmitSocialEmbedForReview: (socialEmbedId: string) => void;
-  onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
+  onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => Promise<void>;
 };
 
 function PrivatePanel({
@@ -1110,28 +1225,28 @@ type RoleStartSurfaceProps = {
   socialEmbeds: SocialEmbedPublication[];
   onApproveCampaign: (campaignId: string) => void;
   onApproveEvent: (eventId: string) => void;
-  onApproveNews: (newsId: string) => void;
-  onApproveRevision: (newsId: string) => void;
+  onApproveNews: (newsId: string) => Promise<void>;
+  onApproveRevision: (newsId: string) => Promise<void>;
   onApproveSermon: (sermonId: string) => void;
   onApproveSocialEmbed: (socialEmbedId: string) => void;
   onCreateDraftCampaign: (input: CampaignDraftInput) => void;
   onCreateDraftEvent: (input: EventDraftInput) => void;
-  onCreateDraftNews: (input: NewsDraftInput) => void;
+  onCreateDraftNews: (input: NewsDraftInput) => Promise<void>;
   onCreateDraftSermon: (input: SermonDraftInput) => void;
   onCreateDraftSocialEmbed: (input: SocialEmbedDraftInput) => void;
-  onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
+  onProposeRevision: (newsId: string, input: NewsDraftVersion) => Promise<void>;
   onRejectCampaign: (campaignId: string) => void;
   onRejectEvent: (eventId: string) => void;
-  onRejectNews: (newsId: string) => void;
-  onRejectRevision: (newsId: string) => void;
+  onRejectNews: (newsId: string) => Promise<void>;
+  onRejectRevision: (newsId: string) => Promise<void>;
   onRejectSermon: (sermonId: string) => void;
   onRejectSocialEmbed: (socialEmbedId: string) => void;
   onSubmitCampaignForReview: (campaignId: string) => void;
   onSubmitEventForReview: (eventId: string) => void;
-  onSubmitNewsForReview: (newsId: string) => void;
+  onSubmitNewsForReview: (newsId: string) => Promise<void>;
   onSubmitSermonForReview: (sermonId: string) => void;
   onSubmitSocialEmbedForReview: (socialEmbedId: string) => void;
-  onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
+  onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => Promise<void>;
   user: AuthenticatedUser;
 };
 
@@ -1392,7 +1507,9 @@ function PublicNewsSection({ news }: { news: NewsPublication[] }) {
               <h3>{newsItem.title}</h3>
               <p className="news-summary">{newsItem.summary}</p>
               <p>{newsItem.body}</p>
-              {newsItem.imageReference ? (
+              {newsItem.mediaAsset ? (
+                <MediaAssetImage mediaAsset={newsItem.mediaAsset} />
+              ) : newsItem.imageReference ? (
                 <p className="news-image-reference">Imagen: {newsItem.imageReference}</p>
               ) : null}
             </article>
@@ -1534,14 +1651,14 @@ function PublicSocialEmbedCard({
 
 type NewsEditorialWorkspaceProps = {
   news: NewsPublication[];
-  onApproveNews: (newsId: string) => void;
-  onApproveRevision: (newsId: string) => void;
-  onCreateDraftNews: (input: NewsDraftInput) => void;
-  onProposeRevision: (newsId: string, input: NewsDraftVersion) => void;
-  onRejectNews: (newsId: string) => void;
-  onRejectRevision: (newsId: string) => void;
-  onSubmitNewsForReview: (newsId: string) => void;
-  onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => void;
+  onApproveNews: (newsId: string) => Promise<void>;
+  onApproveRevision: (newsId: string) => Promise<void>;
+  onCreateDraftNews: (input: NewsDraftInput) => Promise<void>;
+  onProposeRevision: (newsId: string, input: NewsDraftVersion) => Promise<void>;
+  onRejectNews: (newsId: string) => Promise<void>;
+  onRejectRevision: (newsId: string) => Promise<void>;
+  onSubmitNewsForReview: (newsId: string) => Promise<void>;
+  onUpdateDraftNews: (newsId: string, input: NewsDraftInput) => Promise<void>;
   user: AuthenticatedUser;
 };
 
@@ -2294,8 +2411,17 @@ function NewsEditorialWorkspace({
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
   const [editingPublishedNewsId, setEditingPublishedNewsId] = useState<string | null>(null);
 
-  function handleFormChange(field: keyof NewsFormValues, value: string) {
+  function handleFormChange(field: NewsTextFormField, value: string) {
     setFormValues((currentValues) => ({ ...currentValues, [field]: value }));
+  }
+
+  function handleUploadedImageChange(files: FileList | null) {
+    const file = files?.[0] ?? null;
+
+    setFormValues((currentValues) => ({
+      ...currentValues,
+      uploadedImageFile: file && file.type.startsWith("image/") ? file : null
+    }));
   }
 
   function resetForm() {
@@ -2330,6 +2456,9 @@ function NewsEditorialWorkspace({
       title: newsItem.title,
       summary: newsItem.summary,
       body: newsItem.body,
+      externalImageUrl: newsItem.mediaAsset?.url ?? "",
+      mediaAltText: newsItem.mediaAsset?.altText ?? "",
+      uploadedImageFile: null,
       imageReference: newsItem.imageReference ?? ""
     });
   }
@@ -2340,6 +2469,9 @@ function NewsEditorialWorkspace({
       title: newsItem.title,
       summary: newsItem.summary,
       body: newsItem.body,
+      externalImageUrl: newsItem.mediaAsset?.url ?? "",
+      mediaAltText: newsItem.mediaAsset?.altText ?? "",
+      uploadedImageFile: null,
       imageReference: newsItem.imageReference ?? ""
     });
   }
@@ -2390,6 +2522,32 @@ function NewsEditorialWorkspace({
             />
           </label>
           <label>
+            URL externa de imagen
+            <input
+              onChange={(event) =>
+                handleFormChange("externalImageUrl", event.target.value)
+              }
+              type="url"
+              value={formValues.externalImageUrl}
+            />
+          </label>
+          <label>
+            Imagen para optimizar
+            <input
+              accept="image/*"
+              onChange={(event) => handleUploadedImageChange(event.target.files)}
+              type="file"
+            />
+          </label>
+          <label>
+            Texto alternativo de imagen
+            <input
+              onChange={(event) => handleFormChange("mediaAltText", event.target.value)}
+              type="text"
+              value={formValues.mediaAltText}
+            />
+          </label>
+          <label>
             Referencia de imagen (opcional)
             <input
               onChange={(event) =>
@@ -2416,8 +2574,8 @@ function NewsEditorialWorkspace({
         </form>
       ) : null}
 
-      <section className="news-review-panel" aria-labelledby="news-workspace-title">
-        <h4 id="news-workspace-title">
+      <section className="news-review-panel" aria-labelledby="news-review-title">
+        <h4 id="news-review-title">
           {user.role === "admin" ? "Revision de Noticias" : "Noticias en preparacion"}
         </h4>
         {news.length > 0 ? (
@@ -2447,12 +2605,12 @@ function NewsEditorialWorkspace({
 
 type NewsPanelCardProps = {
   newsItem: NewsPublication;
-  onApproveNews: (newsId: string) => void;
-  onApproveRevision: (newsId: string) => void;
+  onApproveNews: (newsId: string) => Promise<void>;
+  onApproveRevision: (newsId: string) => Promise<void>;
   onEditDraft: (newsItem: NewsPublication) => void;
   onEditPublished: (newsItem: NewsPublication) => void;
-  onRejectNews: (newsId: string) => void;
-  onRejectRevision: (newsId: string) => void;
+  onRejectNews: (newsId: string) => Promise<void>;
+  onRejectRevision: (newsId: string) => Promise<void>;
   onSubmitForReview: (newsId: string) => void;
   user: AuthenticatedUser;
 };
@@ -2480,7 +2638,9 @@ function NewsPanelCard({
       </div>
       <p className="news-summary">{newsItem.summary}</p>
       <p>{newsItem.body}</p>
-      {newsItem.imageReference ? (
+      {newsItem.mediaAsset ? (
+        <MediaAssetSummary mediaAsset={newsItem.mediaAsset} />
+      ) : newsItem.imageReference ? (
         <p className="news-image-reference">Imagen: {newsItem.imageReference}</p>
       ) : null}
 
@@ -2490,7 +2650,9 @@ function NewsPanelCard({
           <h6>{newsItem.pendingVersion.title}</h6>
           <p className="news-summary">{newsItem.pendingVersion.summary}</p>
           <p>{newsItem.pendingVersion.body}</p>
-          {newsItem.pendingVersion.imageReference ? (
+          {newsItem.pendingVersion.mediaAsset ? (
+            <MediaAssetSummary mediaAsset={newsItem.pendingVersion.mediaAsset} />
+          ) : newsItem.pendingVersion.imageReference ? (
             <p className="news-image-reference">
               Imagen: {newsItem.pendingVersion.imageReference}
             </p>
@@ -2546,6 +2708,25 @@ function NewsPanelCard({
 
 function createNewsId(currentNews: NewsPublication[]) {
   return `noticia-${currentNews.length + 1}`;
+}
+
+function MediaAssetImage({ mediaAsset }: { mediaAsset: MediaAsset }) {
+  return (
+    <img
+      alt={mediaAsset.altText}
+      className="publication-media-image"
+      src={mediaAsset.url}
+    />
+  );
+}
+
+function MediaAssetSummary({ mediaAsset }: { mediaAsset: MediaAsset }) {
+  return (
+    <div className="media-asset-summary">
+      <p className="news-image-reference">MediaAsset: {mediaAsset.url}</p>
+      <p className="news-image-reference">Alt: {mediaAsset.altText}</p>
+    </div>
+  );
 }
 
 function createCampaignId(currentCampaigns: CampaignPublication[]) {
@@ -2770,15 +2951,54 @@ function sanitizeYouTubeVideoId(videoId: string | null | undefined) {
 
 function normalizeNewsFormValues(values: NewsFormValues): NewsDraftInput {
   const imageReference = values.imageReference.trim();
+  const externalImageUrl = values.externalImageUrl.trim();
+  const mediaAltText = values.mediaAltText.trim();
+  const uploadedImageFile = values.uploadedImageFile?.type.startsWith("image/")
+    ? values.uploadedImageFile
+    : undefined;
 
   return {
     title: values.title.trim(),
     summary: values.summary.trim(),
     body: values.body.trim(),
-    imageReference: imageReference || undefined
+    imageReference: imageReference || undefined,
+    mediaAltText: mediaAltText || undefined,
+    mediaAsset:
+      externalImageUrl && mediaAltText
+        ? {
+            kind: "external_image",
+            url: externalImageUrl,
+            altText: mediaAltText
+          }
+        : undefined,
+    uploadedImageFile: externalImageUrl ? undefined : uploadedImageFile
   };
 }
 
 function isCompleteNewsDraft(input: NewsDraftInput) {
-  return input.title.length > 0 && input.summary.length > 0 && input.body.length > 0;
+  return (
+    input.title.length > 0 &&
+    input.summary.length > 0 &&
+    input.body.length > 0 &&
+    (!input.mediaAsset || input.mediaAsset.altText.length > 0) &&
+    (!input.uploadedImageFile || Boolean(input.mediaAltText))
+  );
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadBrowserImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image));
+    image.addEventListener("error", () => reject(new Error("Image could not load.")));
+    image.src = src;
+  });
 }

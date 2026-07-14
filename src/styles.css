@@ -368,6 +368,19 @@ h1 {
   font-weight: 900;
 }
 
+.publication-media-image {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+.media-asset-summary {
+  display: grid;
+  gap: 4px;
+}
+
 .sermon-video {
   aspect-ratio: 16 / 9;
   margin: 14px 0;
